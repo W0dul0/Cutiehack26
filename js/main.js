@@ -13,7 +13,7 @@ scene.background = new THREE.Color(0x101014);
 const width = container.clientWidth || 980;
 const height = container.clientHeight || 980;
 const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 30);
-camera.position.set(0, 0, 20);
+camera.position.set(0, 0, 100);
 
 const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
 scene.add(ambientLight);
@@ -21,40 +21,34 @@ const dirLight = new THREE.DirectionalLight(0xffffff, 2);
 dirLight.position.set(3, 5, 4);
 scene.add(dirLight);
 
-let characterMesh = null;
+let sceneMesh = null;
 
 const renderer = new THREE.WebGLRenderer({ antialias: false });
 renderer.setSize(width, height);
 container.appendChild(renderer.domElement);
 
-const geometry = new THREE.BoxGeometry(1, 1, 1);
-const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-const cube = new THREE.Mesh(geometry, material);
-scene.add(cube);
+/*test cube*/
+//const geometry = new THREE.BoxGeometry(1, 1, 1);
+//const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+//const cube = new THREE.Mesh(geometry, material);
+//scene.add(cube);
 
 try {
   const gltfLoader = new GLTFLoader();
   const gltf = await gltfLoader.loadAsync("/assets/scene.glb");
 
-  characterMesh = gltf.scene;
-  characterMesh.scale.set(0.5, 0.5, 0.5);
-  characterMesh.position.set(0, 0, 0);
+  sceneMesh = gltf.scene;
+  sceneMesh.scale.set(0.1, 0.1, 0.1);
+  sceneMesh.position.set(0, 0, 0);
 
-  scene.add(characterMesh);
-  console.log("Loaded GLB:", characterMesh);
+  scene.add(sceneMesh);
+  console.log("Loaded GLB:", sceneMesh);
 } catch (err) {
   console.error("Failed to load GLTF model:", err);
 }
 
 function animate() {
   requestAnimationFrame(animate);
-
-  cube.rotation.x += 0.01;
-  cube.rotation.y += 0.01;
-
-  if (characterMesh) {
-    characterMesh.rotation.y += 0.01;
-  }
 
   renderer.render(scene, camera);
 }
