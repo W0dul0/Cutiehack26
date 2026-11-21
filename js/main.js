@@ -2,6 +2,12 @@ import * as THREE from "https://esm.sh/three@0.160.0";
 import { HandLandmarker, FilesetResolver } from "https://esm.sh/@mediapipe/tasks-vision@0.10.9";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 
+// Hide button: play the fade animation on click
+const hideButton = document.getElementById("hide-button");
+hideButton?.addEventListener("click", () => {
+  hideButton.classList.add("fade-out");
+});
+
 const container = document.getElementById("Three.js");
 if (!container) {
   throw new Error('Could not find element with id="Three.js"');

@@ -1,3 +1,5 @@
+@import "tailwindcss";
+@plugin "daisyui";
 
 * {
   box-sizing: border-box;
@@ -7,6 +9,7 @@ body {
   margin: 0;
   padding: 24px;
   background: #101014;
+  border:gray, 1px, solid;
   color: white;
   font-family: Arial, sans-serif;
 }
@@ -36,12 +39,14 @@ section {
 
 .debug-panel {
   grid-column: 1 / -1;
+  gap: 5px;
 }
 
 #webcam-web {
   display: flex;
   flex-direction: row;
   align-items: flex-start;
+  border:gray, 1px, solid;
   gap: 20px;
 }
 
@@ -66,6 +71,20 @@ section {
   padding: 12px 20px;
   border-radius: 8px;
   cursor: pointer;
+}
+
+/* Added by JS when the button is clicked */
+.fade-out {
+  animation: button-ani 1.5s forwards; /* forwards = stay at 0% opacity after */
+}
+
+@keyframes button-ani {
+  from{
+    opacity: 100%;
+  }
+  to{
+    opacity: 0%;
+  }
 }
 
 #enable-webcam-btn:hover {
