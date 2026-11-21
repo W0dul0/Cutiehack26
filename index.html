@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,15 +8,19 @@
 </head>
 
 <body>
-  <h1>Alice in Wonderland Hologram</h1>
+  <h1 class="header">Alice in Wonderland Hologram</h1>
 
    <div id = "webcam-web">
     <!-- Debug panel -->
       <div id="debug-panel">
-        <h2>Debug Panel</h2>
-        <button id="hide-button">Hide</button>
-        <p>Connection: <span id="net-status">Disconnected</span></p>
-        <p>Coordinates: <span id="telemetry">X: 0° | Y: 0°</span></p>
+        <div class="card">
+          <h2 id="header">Debug Panel</h2>
+          <button id="hide-button">Hide</button>
+        </div>
+        <div class="card">
+          <p>Connection: <span id="net-status">Disconnected</span></p>
+          <p>Coordinates: <span id="telemetry">X: 0° | Y: 0°</span></p>
+        </div>
       </div>
       <!-- Webcam controls -->
       <video id="webcam" autoplay playsinline muted></video>

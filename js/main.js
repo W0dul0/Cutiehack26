@@ -2,10 +2,14 @@ import * as THREE from "https://esm.sh/three@0.160.0";
 import { HandLandmarker, FilesetResolver } from "https://esm.sh/@mediapipe/tasks-vision@0.10.9";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 
-// Hide button: play the fade animation on click
+// Hide button: fade the webcam out / back in
 const hideButton = document.getElementById("hide-button");
+const webcamEl = document.getElementById("webcam");
 hideButton?.addEventListener("click", () => {
-  hideButton.classList.add("fade-out");
+  const isHidden = webcamEl.classList.contains("webcam-hidden");
+  webcamEl.classList.toggle("webcam-hidden", !isHidden);
+  webcamEl.classList.toggle("webcam-shown", isHidden);
+  hideButton.textContent = isHidden ? "Hide" : "Show";
 });
 
 const container = document.getElementById("Three.js");
