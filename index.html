@@ -1,15 +1,29 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vanilla Vercel App</title>
+  <title>Alice in Wonderland</title>
   <link rel="stylesheet" href="./css/styles.css" />
 </head>
+
 <body>
-    <button> WebCam </button>
-    <div id="Debug Panel"> </div>
-    <canvas id="Three.js"></canvas>
+  <h1>Alice in Wonderland Hologram</h1>
+
+  <!-- Webcam controls -->
+  <button id="enable-webcam-btn">WebCam</button>
+  <video id="webcam" autoplay playsinline muted></video>
+
+  <!-- Debug panel -->
+  <div id="Debug Panel">
+    <h2>Debug Panel</h2>
+    <p>Connection: <span id="net-status">Disconnected</span></p>
+    <p>Coordinates: <span id="telemetry">X: 0° | Y: 0°</span></p>
+  </div>
+
+  <!-- Keep this line -->
+  <div id="Three.js" style="width: 980px; height: 980px;"></div>
 
   <script type="module" src="./js/main.js"></script>
 </body>
