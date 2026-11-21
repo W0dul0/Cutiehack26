@@ -12,16 +12,33 @@ const height = container.clientHeight || 980;
 const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 30);
 camera.position.set(0, 0, 5);
 
+const this.characterMesh = null; 
+
 const renderer = new THREE.WebGLRenderer({ antialias: false });
 renderer.setSize(width, height);
 container.appendChild(renderer.domElement);
 
-// Quick test cube so you can verify rendering works
-const cube = new THREE.Mesh(
-  new THREE.BoxGeometry(1, 1, 1),
-  new THREE.MeshNormalMaterial()
-);
-scene.add(cube);
+    try {
+      const gltfLoader = new GLTFLoader();
+      const duckGlb = await gltfLoader.loadAsync('./');
+      
+      this.characterMesh = duckGlb.scene;
+
+      // Adjust scale and center the model properly
+      this.characterMesh.scale.set(0.1, 0.1, 0.1); 
+      //this.characterMesh.position.set(0, 0, 0);
+      
+      // Center geometry/mesh layout if needed
+      this.characterMesh.traverse((child) => {
+        if (child.isMesh) {
+          child.geometry.center();
+        }
+      });
+      
+      this.scene.add(this.sceneMesh);
+    }
+
+
 
 function animate() {
   requestAnimationFrame(animate);
