@@ -65,3 +65,27 @@ function animate() {
 animate();
 console.log(THREE);
 console.log(scene);
+
+//MediaPipe Engine
+
+// On Web, live camera loops pair runningMode: "VIDEO" with requestAnimationFrame
+const handLandmarker = await HandLandmarker.createFromOptions(vision, {
+  baseOptions: { modelAssetPath: "hand_landmarker.task", delegate: "GPU" },
+  runningMode: "VIDEO",
+  numHands: 2,
+});
+
+const video = document.getElementById("webcam") as HTMLVideoElement;
+video.srcObject = await navigator.mediaDevices.getUserMedia({ video: true });
+await video.play();
+let lastVideoTime = -1;
+
+function renderLoop() {
+  if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
+    lastVideoTime = video.currentTime;
+    const result = handLandmarker.detectForVideo(video, performance.now());
+    console.log(result.landmarks, result.handedness);
+  }
+  requestAnimationFrame(renderLoop);
+}
+renderLoop();
