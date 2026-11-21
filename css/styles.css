@@ -59,6 +59,49 @@ section {
   display: flex;
   flex-direction: column;   /* stack the two cards */
   gap: 4%;                  /* even space between the cards */
+  overflow: hidden;
+  transition: width 0.3s ease, opacity 0.3s ease;
+}
+
+/* JS adds this when the collapse button is clicked */
+#debug-panel.panel-collapsed {
+  width: 0;
+  opacity: 0;
+}
+
+#line {
+  position: relative;       /* lets the button pin to the line */
+  width: 1px;
+  flex-shrink: 0;
+  background-color: gray;
+}
+
+#collapse {
+  position: absolute;
+  top: 0;                   /* top of the line */
+  right: 6px;               /* sits just left of the line */
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid gray;
+  background: #20202a;
+  color: white;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.3s ease, background 0.2s;
+}
+
+#collapse:hover {
+  background: #8b5cf6;
+}
+
+/* arrow flips to point right when the panel is collapsed */
+#collapse.flipped {
+  transform: rotate(180deg);
+  right: -34px;             /* moves to the right side so it stays visible */
 }
 
 #webcam-web {

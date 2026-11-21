@@ -12,6 +12,15 @@ hideButton?.addEventListener("click", () => {
   hideButton.textContent = isHidden ? "Hide" : "Show";
 });
 
+// Collapse button: slide the debug panel closed / open
+const collapseBtn = document.getElementById("collapse");
+const debugPanel = document.getElementById("debug-panel");
+collapseBtn?.addEventListener("click", () => {
+  const collapsed = debugPanel.classList.toggle("panel-collapsed");
+  collapseBtn.classList.toggle("flipped", collapsed);
+  collapseBtn.title = collapsed ? "Expand panel" : "Collapse panel";
+});
+
 const container = document.getElementById("Three.js");
 if (!container) {
   throw new Error('Could not find element with id="Three.js"');
