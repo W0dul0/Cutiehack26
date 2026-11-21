@@ -86,3 +86,6 @@ function renderLoop() {
   requestAnimationFrame(renderLoop);
 }
 renderLoop();
+
+console.log(THREE);
+console.log(scene);
