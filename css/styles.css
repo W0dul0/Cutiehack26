@@ -46,9 +46,9 @@ section {
   transform: scaleX(-1);
 }
 
-#canvas-container {
+#Three.js {
   width: 100%;
-  height: 350px;
+  height:100%;
 }
 
 #enable-webcam-btn {

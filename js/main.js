@@ -58,3 +58,5 @@ function animate() {
   renderer.render(scene, camera);
 }
 animate();
+console.log(THREE);
+console.log(scene);
