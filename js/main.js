@@ -12,3 +12,7 @@ camera.position.set(0, 0, 5);
 
 console.log(THREE);
 console.log(scene);
+
+this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+    this.renderer.setPixelRatio(window.devicePixelRatio); // Handle high-DPI retina displays
+    this.container.appendChild(this.renderer.domElement); // Append canvas element into DOM
