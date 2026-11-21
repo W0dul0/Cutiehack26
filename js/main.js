@@ -10,7 +10,11 @@ scene.background = new THREE.Color(0x101014);
 const width = container.clientWidth || 980;
 const height = container.clientHeight || 980;
 const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 30);
+<<<<<<< HEAD
 camera.position.set(0, 0, 5);
+=======
+camera.position.set(0, 0, 100);
+>>>>>>> parent of 74a1bdf (Update)
 
 const this.characterMesh = null; 
 
