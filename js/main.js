@@ -109,7 +109,7 @@ try {
   const gltf = await gltfLoader.loadAsync("/assets/scene.glb");
 
   sceneMesh = gltf.scene;
-  sceneMesh.scale.set(0.1, 0.1, 0.1);
+  sceneMesh.scale.set(1, 1, 1);
   sceneMesh.position.set(0, 0, 0);
 
   scene.add(sceneMesh);
