@@ -46,17 +46,13 @@ section {
   transform: scaleX(-1);
 }
 
-#canvas-container {
+#Three.js {
+  position:absolute;
   width: 100%;
-<<<<<<< HEAD
-  height: 350px;
-=======
   height:100%;
-  z-index:0;
->>>>>>> parent of 74a1bdf (Update)
 }
 
-#enable-webcam-btn {
+#hide-button {
   background: #8b5cf6;
   color: white;
   border: none;
