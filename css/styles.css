@@ -38,10 +38,17 @@ section {
   grid-column: 1 / -1;
 }
 
+#webcam-web {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 20px;
+}
+
 #webcam {
   display: block;
-  width: 100%;
-  margin-top: 15px;
+  width: 480px;
+  max-width: 50%;
   border-radius: 8px;
   transform: scaleX(-1);
 }
