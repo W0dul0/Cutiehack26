@@ -28,6 +28,11 @@ const renderer = new THREE.WebGLRenderer({ antialias: false });
 renderer.setSize(width, height);
 container.appendChild(renderer.domElement);
 
+const geometry = new THREE.BoxGeometry( 1, 1, 1 );
+const material = new THREE.MeshBasicMaterial( { color: 0x00ff00 } );
+const cube = new THREE.Mesh( geometry, material );
+scene.add( cube );
+
 try {
   const gltfLoader = new GLTFLoader();
   // Replace './duck.glb' with the actual path to your .glb or .gltf file
