@@ -15,7 +15,6 @@ const height = container.clientHeight || 980;
 const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 30);
 camera.position.set(0, 0, 5);
 
-// Add light so PBR/GLTF materials aren't pitch black
 const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
 scene.add(ambientLight);
 const dirLight = new THREE.DirectionalLight(0xffffff, 2);
@@ -28,33 +27,30 @@ const renderer = new THREE.WebGLRenderer({ antialias: false });
 renderer.setSize(width, height);
 container.appendChild(renderer.domElement);
 
-const geometry = new THREE.BoxGeometry( 1, 1, 1 );
-const material = new THREE.MeshBasicMaterial( { color: 0x00ff00 } );
-const cube = new THREE.Mesh( geometry, material );
-scene.add( cube );
+const geometry = new THREE.BoxGeometry(1, 1, 1);
+const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+const cube = new THREE.Mesh(geometry, material);
+scene.add(cube);
 
 try {
   const gltfLoader = new GLTFLoader();
-  // Replace './duck.glb' with the actual path to your .glb or .gltf file
-  const duckGlb = await gltfLoader.loadAsync("./assets/scene.glb");
+  const gltf = await gltfLoader.loadAsync("/assets/scene.glb");
 
-  characterMesh = duckGlb.scene;
-  characterMesh.scale.set(0.1, 0.1, 0.1);
+  characterMesh = gltf.scene;
+  characterMesh.scale.set(0.5, 0.5, 0.5);
   characterMesh.position.set(0, 0, 0);
 
-  characterMesh.traverse((child) => {
-    if (child.isMesh && child.geometry) {
-      child.geometry.center();
-    }
-  });
-
   scene.add(characterMesh);
+  console.log("Loaded GLB:", characterMesh);
 } catch (err) {
   console.error("Failed to load GLTF model:", err);
 }
 
 function animate() {
   requestAnimationFrame(animate);
+
+  cube.rotation.x += 0.01;
+  cube.rotation.y += 0.01;
 
   if (characterMesh) {
     characterMesh.rotation.y += 0.01;
@@ -63,25 +59,32 @@ function animate() {
   renderer.render(scene, camera);
 }
 animate();
-console.log(THREE);
-console.log(scene);
 
-//MediaPipe Engine
+// MediaPipe Engine
+const vision = await FilesetResolver.forVisionTasks(
+  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/wasm"
+);
 
-// On Web, live camera loops pair runningMode: "VIDEO" with requestAnimationFrame
 const handLandmarker = await HandLandmarker.createFromOptions(vision, {
-  baseOptions: { modelAssetPath: "hand_landmarker.task", delegate: "GPU" },
+  baseOptions: {
+    modelAssetPath:
+      "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+    delegate: "GPU",
+  },
   runningMode: "VIDEO",
   numHands: 2,
 });
 
-const video = document.getElementById("webcam") as HTMLVideoElement;
-video.srcObject = await navigator.mediaDevices.getUserMedia({ video: true });
-await video.play();
+const video = document.getElementById("webcam");
+if (video && navigator.mediaDevices?.getUserMedia) {
+  video.srcObject = await navigator.mediaDevices.getUserMedia({ video: true });
+  await video.play();
+}
+
 let lastVideoTime = -1;
 
 function renderLoop() {
-  if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
+  if (video && video.readyState >= 2 && video.currentTime !== lastVideoTime) {
     lastVideoTime = video.currentTime;
     const result = handLandmarker.detectForVideo(video, performance.now());
     console.log(result.landmarks, result.handedness);
