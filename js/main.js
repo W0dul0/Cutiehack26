@@ -36,7 +36,7 @@ scene.add( cube );
 try {
   const gltfLoader = new GLTFLoader();
   // Replace './duck.glb' with the actual path to your .glb or .gltf file
-  const duckGlb = await gltfLoader.loadAsync("./assets/alice_anime.glb");
+  const duckGlb = await gltfLoader.loadAsync("./assets/scene.glb");
 
   characterMesh = duckGlb.scene;
   characterMesh.scale.set(0.1, 0.1, 0.1);
