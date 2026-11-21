@@ -13,7 +13,7 @@ scene.background = new THREE.Color(0x101014);
 const width = container.clientWidth || 980;
 const height = container.clientHeight || 980;
 const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 30);
-camera.position.set(0, 0, 5);
+camera.position.set(0, 0, 20);
 
 const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
 scene.add(ambientLight);
@@ -72,7 +72,7 @@ const handLandmarker = await HandLandmarker.createFromOptions(vision, {
     delegate: "GPU",
   },
   runningMode: "VIDEO",
-  numHands: 2,
+  numHands: 1,
 });
 
 const video = document.getElementById("webcam");
