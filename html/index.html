@@ -12,15 +12,17 @@
   <h1>Alice in Wonderland Hologram</h1>
 
   <!-- Webcam controls -->
-  <button id="hide-button">Hide</button>
-  <video id="webcam" autoplay playsinline muted></video>
+   <div className = "flex flex-row">
+      <button id="hide-button">Hide</button>
+      <video id="webcam" autoplay playsinline muted></video>
 
-  <!-- Debug panel -->
-  <div id="Debug Panel">
-    <h2>Debug Panel</h2>
-    <p>Connection: <span id="net-status">Disconnected</span></p>
-    <p>Coordinates: <span id="telemetry">X: 0° | Y: 0°</span></p>
-  </div>
+      <!-- Debug panel -->
+      <div id="Debug Panel">
+        <h2>Debug Panel</h2>
+        <p>Connection: <span id="net-status">Disconnected</span></p>
+        <p>Coordinates: <span id="telemetry">X: 0° | Y: 0°</span></p>
+      </div>
+   </div>
 
   <div id="Three.js" style="width: 980px; height: 980px;"></div>
 
