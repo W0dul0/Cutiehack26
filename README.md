@@ -81,7 +81,7 @@ Sahng Chu
 Made for **[CutieHack 2026](https://cutiehack.com)**
 
 [![GitHub](https://img.shields.io/github/stars/W0dul0/Cutiehack26)](https://github.com/W0dul0/Cutiehack26)
-[![Website](https://cutiehack26.vercel.app/)]
+[![Wonderlens live website for the Alice in Wonderland hologram experience](https://cutiehack26.vercel.app/)]
 
 ## Inspiration
 We were inspired by Disney's Pepper Ghost technique to project a 3d hologram into real life. We wanted to apply this amazing invention to this year's project with the theme of Alice in Wonderland.
