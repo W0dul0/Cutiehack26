@@ -215,8 +215,8 @@ try {
 // ==============================================================================
 
 // ===================== SERIAL & ENCODER TRANSFORMS ============================
-const ROTATE_STEP = 0.12; // radians per encoder click
-const ZOOM_STEP = 0.8;    // camera units per encoder click
+const ROTATE_STEP = 0.12;
+const ZOOM_STEP = 0.8;
 
 function handleEncoderAction(encoderId, action, amount) {
   switch (action) {
@@ -245,7 +245,6 @@ function handleEncoderAction(encoderId, action, amount) {
   );
 }
 
-// Keyboard fallback for testing without hardware
 window.addEventListener("keydown", (e) => {
   if (e.key === "ArrowRight") handleEncoderAction("E1", "RIGHT", 1);
   if (e.key === "ArrowLeft")  handleEncoderAction("E1", "LEFT", 1);
@@ -255,7 +254,6 @@ window.addEventListener("keydown", (e) => {
   if (e.key.toLowerCase() === "s") handleEncoderAction("E3", "ZOOM_OUT", 1);
 });
 
-// Connect to ESP32 via Web Serial API (call from a button click)
 window.connectEncoders = async function () {
   if (!("serial" in navigator)) {
     alert("Web Serial API is not supported in this browser. Use Chrome or Edge.");
@@ -265,8 +263,6 @@ window.connectEncoders = async function () {
   try {
     const port = await navigator.serial.requestPort();
     await port.open({ baudRate: 115200 });
-
-    // Prevent Chrome from holding ESP32 in reset/bootloader mode
     await port.setSignals({ dataTerminalReady: false, requestToSend: false });
 
     const decoder = new TextDecoderStream();
@@ -290,7 +286,6 @@ window.connectEncoders = async function () {
         const line = rawLine.trim();
         if (!line || line === "READY") continue;
 
-        // Expected format from encoders.ino: "E1,RIGHT,1"
         const parts = line.split(",");
         if (parts.length === 3) {
           const encoderId = parts[0].trim();
@@ -303,17 +298,18 @@ window.connectEncoders = async function () {
       }
     }
   } catch (err) {
-console.error("Serial connection error:", err);
-}
+    console.error("Serial connection error:", err);
+  }
 };
 // ==============================================================================
+
 const clock = new THREE.Clock();
 function animate() {
-requestAnimationFrame(animate);
-const dt = clock.getDelta();
+  requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+
 if (mixer) mixer.update(dt);
 if (TURNTABLE_SPEED) targetRotY += TURNTABLE_SPEED * dt;
-// Smoothly interpolate 3D diorama rotation & zoom from encoder targets
 dioramaGroup.rotation.y = THREE.MathUtils.lerp(dioramaGroup.rotation.y, targetRotY, 0.2);
 dioramaGroup.rotation.x = THREE.MathUtils.lerp(dioramaGroup.rotation.x, targetRotX, 0.2);
 orbitRadius = THREE.MathUtils.lerp(orbitRadius, targetOrbitRadius, 0.2);
@@ -321,7 +317,7 @@ camera.position.z = orbitRadius;
 renderViews();
 }
 animate();
-// ===================== MEDIAPIPE & PINCH INTERACTION ==========================
+// ===================== MEDIAPIPE & BUILT-IN PINCH INTERACTION =================
 const vision = await FilesetResolver.forVisionTasks(
 "jsdelivr.net"
 );
@@ -349,14 +345,16 @@ camera.position.z = orbitRadius;
 camera.updateMatrixWorld();
 raycaster.setFromCamera(new THREE.Vector2(point.x, point.y), camera);
 const targets = characterHitbox ? [characterHitbox] : scene.children;
-const hits = raycaster.intersectObjects(targets, true);
-const h = hits[0];
+const h = raycaster.intersectObjects(targets, true)[0];
 return h ? { object: h.object, name: h.object.name, point: h.point, distance: h.distance } : null;
 };
 function handlePinchStart(point) {
 const hit = castFromPinch(point);
 cursorMat.color.setHex(0xff00ff);
 cursorMesh.scale.set(1.35, 1.35, 1.35);
+window.dispatchEvent(
+new CustomEvent("pinchstart", { detail: { point, hit, count: pinchState.count } })
+);
 if (hit && !isPickedUp) {
 isPickedUp = true;
 console.log("Character found!", hit.name);
@@ -364,70 +362,61 @@ if (targetCharacter) targetCharacter.position.y += 1.5;
 window.dispatchEvent(new CustomEvent("characterfound", { detail: { hit } }));
 }
 }
-function handlePinchEnd() {
+function handlePinchEnd(point) {
 cursorMat.color.setHex(0x00ffff);
 cursorMesh.scale.set(1, 1, 1);
+window.dispatchEvent(
+new CustomEvent("pinchend", { detail: { point, count: pinchState.count } })
+);
 if (isPickedUp && targetCharacter) {
 targetCharacter.position.y -= 1.5;
 isPickedUp = false;
 }
 }
-let pinchDetector = null;
-try {
-const { createPinchDetector } = await import("./pinch.js");
-const emit = (name, fn) => (s) => {
-s.hit = castFromPinch(s.point);
-fn(s.point);
-window.dispatchEvent(new CustomEvent(name, { detail: s }));
+// Built-in pinch tracker (no external pinch.js required)
+const pinchState = {
+isPinching: false,
+point: null,
+distance: 0,
+count: 0,
+holdFrames: 0,
 };
-pinchDetector = createPinchDetector({
-connectBelow: 25,
-releaseAbove: 35,
-onStart: emit("pinchstart", handlePinchStart),
-onEnd: emit("pinchend", handlePinchEnd),
-});
-} catch {
-let pinching = false;
-let holdFrames = 0;
-const state = { point: null, value: 0, count: 0 };
-pinchDetector = {
-state,
-update(hand) {
+window.pinch = pinchState;
+window.castFromPinch = () => castFromPinch(pinchState.point);
+function updatePinch(hand) {
 if (!hand) {
-state.point = null;
-if (pinching) {
-pinching = false;
-handlePinchEnd();
+pinchState.point = null;
+if (pinchState.isPinching) {
+pinchState.isPinching = false;
+handlePinchEnd(null);
 }
-holdFrames = 0;
+pinchState.holdFrames = 0;
 return;
 }
 const thumb = hand[4];
 const index = hand[8];
 const midX = (thumb.x + index.x) / 2;
 const midY = (thumb.y + index.y) / 2;
-state.point = {
+pinchState.point = {
 x: THREE.MathUtils.clamp(((1 - midX) * 2 - 1) * SENSITIVITY_X, -1, 1),
 y: THREE.MathUtils.clamp((1 - midY * 2) * SENSITIVITY_Y, -1, 1),
 };
 const dist = Math.hypot(thumb.x - index.x, thumb.y - index.y);
-state.value = dist;
+pinchState.distance = dist;
 if (dist < 0.045) {
-holdFrames++;
-if (holdFrames === 4 && !pinching) {
-pinching = true;
-state.count++;
-handlePinchStart(state.point);
+pinchState.holdFrames++;
+if (pinchState.holdFrames === 4 && !pinchState.isPinching) {
+pinchState.isPinching = true;
+pinchState.count++;
+handlePinchStart(pinchState.point);
 }
 } else {
-holdFrames = 0;
-if (pinching) {
-pinching = false;
-handlePinchEnd();
+pinchState.holdFrames = 0;
+if (pinchState.isPinching) {
+pinchState.isPinching = false;
+handlePinchEnd(pinchState.point);
 }
 }
-},
-};
 }
 let lastVideoTime = -1;
 function renderLoop() {
@@ -436,16 +425,15 @@ lastVideoTime = video.currentTime;
 const result = handLandmarker.detectForVideo(video, performance.now());
 const rawHand = result.landmarks?.[0];
 const handInAirspace = rawHand && rawHand[0].y <= WRIST_HEIGHT_CUTOFF ? rawHand : null;
-const videoAspect = video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 1;
-pinchDetector.update(handInAirspace, videoAspect);
-const active = !!handInAirspace && !!pinchDetector.state.point;
+updatePinch(handInAirspace);
+const active = !!handInAirspace && !!pinchState.point;
 borderMat.opacity = THREE.MathUtils.lerp(borderMat.opacity, active ? 0.85 : 0, 0.2);
 cursorMat.opacity = THREE.MathUtils.lerp(cursorMat.opacity, active ? 1.0 : 0, 0.25);
 if (active) {
 camera.position.z = orbitRadius;
 camera.updateMatrixWorld();
 raycaster.setFromCamera(
-new THREE.Vector2(pinchDetector.state.point.x, pinchDetector.state.point.y),
+new THREE.Vector2(pinchState.point.x, pinchState.point.y),
 camera
 );
 const planeHit = raycaster.intersectObject(trackingPlane)[0];
