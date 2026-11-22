@@ -1,7 +1,7 @@
 // Rotation + zoom: what the encoders/keys ask for, smoothed into what is shown.
 import { THREE } from "./libs.js";
 import {
-  START_DISTANCE, MIN_DISTANCE, MAX_DISTANCE, ZOOM_STEP,
+  START_DISTANCE, MIN_ZOOM, MAX_ZOOM, ZOOM_STEP,
   ROTATE_STEP, MAX_TILT, TURNTABLE_SPEED, SMOOTHING,
 } from "./config.js";
 
@@ -11,6 +11,17 @@ const { clamp, damp } = THREE.MathUtils;
 export const view = { spin: 0, tilt: 0, distance: START_DISTANCE };
 const target = { ...view };
 
+// Zoom limits in world units, scaled to the model by fitZoomTo()
+const zoom = {};
+export function fitZoomTo(distance) {
+  zoom.min = distance * MIN_ZOOM;
+  zoom.max = distance * MAX_ZOOM;
+  zoom.step = distance * ZOOM_STEP;
+  view.distance = target.distance = distance; // jump straight there, no slow zoom from the placeholder
+  return zoom;
+}
+fitZoomTo(START_DISTANCE);
+
 // encoderId: "E1".."E3"; action: RIGHT/LEFT/UP/DOWN/ZOOM_IN/ZOOM_OUT; amount: clicks
 export function applyControl(encoderId, action, amount = 1) {
   switch (action) {
@@ -18,8 +29,8 @@ export function applyControl(encoderId, action, amount = 1) {
     case "LEFT":     target.spin -= amount * ROTATE_STEP; break;
     case "UP":       target.tilt = clamp(target.tilt - amount * ROTATE_STEP, -MAX_TILT, MAX_TILT); break;
     case "DOWN":     target.tilt = clamp(target.tilt + amount * ROTATE_STEP, -MAX_TILT, MAX_TILT); break;
-    case "ZOOM_IN":  target.distance = clamp(target.distance - amount * ZOOM_STEP, MIN_DISTANCE, MAX_DISTANCE); break;
-    case "ZOOM_OUT": target.distance = clamp(target.distance + amount * ZOOM_STEP, MIN_DISTANCE, MAX_DISTANCE); break;
+    case "ZOOM_IN":  target.distance = clamp(target.distance - amount * zoom.step, zoom.min, zoom.max); break;
+    case "ZOOM_OUT": target.distance = clamp(target.distance + amount * zoom.step, zoom.min, zoom.max); break;
     default: return;
   }
   window.dispatchEvent(new CustomEvent("encoderinput", { detail: { encoderId, action, amount } }));

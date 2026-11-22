@@ -13,11 +13,11 @@
 //   pickup.js        pinch raycast + lifting the character
 //   ui.js            debug panel buttons
 import { THREE } from "./libs.js";
-import { MAX_DISTANCE } from "./config.js";
+import { FOV, MODEL_FILL } from "./config.js";
 import { scene, keyLight, modelRoot } from "./stage.js";
 import { createHologram, frontCamera, setCameraDistance } from "./hologramViews.js";
 import { loadModel } from "./model.js";
-import { view, applyControl, updateView, bindKeyboard } from "./controls.js";
+import { view, applyControl, updateView, bindKeyboard, fitZoomTo } from "./controls.js";
 import { connectEncoders } from "./serial.js";
 import { startHandTracking } from "./handTracking.js";
 import { createPinchDetector } from "./pinch.js";
@@ -54,6 +54,7 @@ window.connectEncoders = () => connectEncoders(applyControl);
 
 bindKeyboard();
 initDebugPanel();
+connectEncoders(applyControl, { askUser: false }); // reconnect an already-allowed ESP32 without a click
 
 // ---------- One loop for everything ----------
 let mixer = null;
@@ -82,7 +83,12 @@ loadModel(modelRoot)
   .then(({ character, hitSphere, mixer: modelMixer, radius }) => {
     mixer = modelMixer;
     pickup.setTarget(character, hitSphere);
-    hologram.setFarPlane(MAX_DISTANCE + radius * 2); // never cut off the back of the model
+
+    // Place the camera so the model fills each view (MODEL_FILL in config.js sets how much)
+    const fitDistance = radius / Math.sin(THREE.MathUtils.degToRad(FOV / 2)) / MODEL_FILL;
+    const zoom = fitZoomTo(fitDistance);
+    hologram.setClipRange(fitDistance / 100, zoom.max + radius * 2);
+    console.log(`Model radius ${radius.toFixed(2)} -> camera distance ${fitDistance.toFixed(2)}`);
   })
   .catch((err) => console.error("Failed to load the 3D model:", err));
 

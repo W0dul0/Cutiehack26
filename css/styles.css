@@ -148,7 +148,8 @@ section {
   height:100%;
 }
 
-#hide-button {
+#hide-button,
+#connect-button {
   background: #8b5cf6;
   color: white;
   border: none;

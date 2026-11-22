@@ -13,10 +13,13 @@ export const FOV = 45;
 export const LIGHT_OFFSET = [3, 5, 4]; // key light position relative to each view's camera
 
 // ---- Camera distance (zoom) ----
-export const START_DISTANCE = 20;
-export const MIN_DISTANCE = 10;
-export const MAX_DISTANCE = 32;
-export const ZOOM_STEP = 0.8;    // per encoder click / key press
+// Once the model loads, the camera is placed to fit it. Everything below is relative to that fit.
+export const MODEL_FILL = 2.0;  // how big the model looks at start: 1 = whole model just fits while spinning,
+                                 // higher = bigger image (edges may clip when turned), lower = smaller
+export const MIN_ZOOM = 0.5;     // closest zoom, as a fraction of the start distance
+export const MAX_ZOOM = 1.6;     // farthest zoom, as a fraction of the start distance
+export const ZOOM_STEP = 0.04;   // per encoder click / key press, as a fraction of the start distance
+export const START_DISTANCE = 20; // only used until the model has loaded
 
 // ---- Model rotation ----
 export const ROTATE_STEP = 0.12; // radians per encoder click / key press

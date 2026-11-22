@@ -53,8 +53,10 @@ export function createHologram(container, scene, light) {
   return {
     renderer,
 
-    setFarPlane(far) {
+    // How close/far the cameras can see; set from the model's size so nothing is cut off
+    setClipRange(near, far) {
       for (const cam of [frontCamera, viewCamera]) {
+        cam.near = near;
         cam.far = far;
         cam.updateProjectionMatrix();
       }

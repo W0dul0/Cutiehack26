@@ -1,7 +1,7 @@
 // What the hand looks like in the hologram: front-view border, ring cursor, grey hand box.
 import { THREE } from "./libs.js";
 import { HUD_LAYER } from "./hologramViews.js";
-import { SHOW_HAND_BOX, HAND_BOX_MAGNIFICATION, OVERLAY_FADE, CURSOR_FOLLOW } from "./config.js";
+import { SHOW_HAND_BOX, HAND_BOX_MAGNIFICATION, OVERLAY_FADE, CURSOR_FOLLOW, START_DISTANCE } from "./config.js";
 
 const CYAN = 0x00ffff;
 const MAGENTA = 0xff00ff;
@@ -42,13 +42,14 @@ export function createHandOverlay(scene, camera) {
   scene.add(handBox);
 
   // Flat plane at the model's depth the cursor slides along. Only raycast, never drawn or added to the scene.
-  const cursorPlane = new THREE.Mesh(new THREE.PlaneGeometry(40, 40));
+  const cursorPlane = new THREE.Mesh(new THREE.PlaneGeometry(1e4, 1e4));
   const ray = new THREE.Raycaster();
   const screenPoint = new THREE.Vector2();
   const halfHeightAt1 = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * HAND_BOX_MAGNIFICATION;
 
   let hand = null;
   let point = null;
+  let cursorSize = 1; // 1.35 while pinching
 
   function placeHandBox(distance) {
     const halfH = distance * halfHeightAt1;
@@ -72,11 +73,17 @@ export function createHandOverlay(scene, camera) {
 
     setPinching(isPinching) {
       cursorMat.color.setHex(isPinching ? MAGENTA : CYAN);
-      cursor.scale.setScalar(isPinching ? 1.35 : 1);
+      cursorSize = isPinching ? 1.35 : 1;
     },
 
     // Call every frame
     update(dt, distance) {
+      // Border and cursor were sized for START_DISTANCE; keep them the same size on screen at any zoom
+      const k = distance / START_DISTANCE;
+      border.scale.setScalar(k);
+      border.position.z = 4 * k;
+      cursor.scale.setScalar(k * cursorSize);
+
       const active = !!(hand && point);
       borderMat.opacity = THREE.MathUtils.damp(borderMat.opacity, active ? 0.85 : 0, OVERLAY_FADE, dt);
       cursorMat.opacity = THREE.MathUtils.damp(cursorMat.opacity, active ? 1 : 0, OVERLAY_FADE, dt);

@@ -19,11 +19,18 @@ export function initDebugPanel() {
     collapseButton.title = collapsed ? "Expand panel" : "Collapse panel";
   });
 
-  // Connection status turns green once the ESP32 encoders connect
+  // Connect button + status (green while the ESP32 encoders are connected)
+  const connectButton = document.getElementById("connect-button");
+  connectButton?.addEventListener("click", () => window.connectEncoders());
+
   const status = document.getElementById("net-status");
-  window.addEventListener("serialconnected", () => {
-    if (!status) return;
-    status.textContent = "Connected";
-    status.classList.add("connected");
-  });
+  const showConnected = (connected) => {
+    if (status) {
+      status.textContent = connected ? "Connected" : "Disconnected";
+      status.classList.toggle("connected", connected);
+    }
+    if (connectButton) connectButton.hidden = connected;
+  };
+  window.addEventListener("serialconnected", () => showConnected(true));
+  window.addEventListener("serialdisconnected", () => showConnected(false));
 }
