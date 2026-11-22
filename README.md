@@ -10,7 +10,7 @@
 - **Hand Gesture Control** - Use your webcam to track hand movements and pinch gestures  
 - **Pick Up Characters** - Simply pinch the character with your fingers to "grab" it
 - **ESP32 Rotator System** - Three rotary encoders enable precise rotation, tilt, and zoom
-- **⌨Easy Testing** - Built-in keyboard controls for quick testing
+- **Easy Testing** - Built-in keyboard controls for quick testing
 
 ---
 
@@ -25,7 +25,7 @@
 
 ---
 
-## ▶Run the Project
+## Run the Project
 
 
 1. Ensure you have **Node.js** and **pnpm** installed  
