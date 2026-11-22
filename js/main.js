@@ -1,6 +1,6 @@
-import * as THREE from "https://esm.sh";
-import { HandLandmarker, FilesetResolver } from "https://esm.sh";
-import { GLTFLoader } from "https://esm.sh/examples/jsm/loaders/GLTFLoader.js";
+import * as THREE from "https://jsdelivr.net";
+import { GLTFLoader } from "https://jsdelivr.net";
+import { HandLandmarker, FilesetResolver } from "https://jsdelivr.net";
 
 const container = document.getElementById("Three.js");
 if (!container) {
@@ -32,28 +32,26 @@ const VIEWS = [
   { slot: "left",   angle: -Math.PI / 2, roll: Math.PI / 2 },
 ];
 
-const ambientLight = new THREE.AmbientLight(0xffffff, 1.3);
-scene.add(ambientLight);
+scene.add(new THREE.AmbientLight(0xffffff, 1.3));
 const dirLight = new THREE.DirectionalLight(0xffffff, 2);
 const LIGHT_OFFSET = new THREE.Vector3(3, 5, 4);
 dirLight.position.copy(LIGHT_OFFSET);
 scene.add(dirLight);
 
-// Diorama group transformed by the 3 rotary encoders
 const dioramaGroup = new THREE.Group();
 scene.add(dioramaGroup);
 
 let targetRotX = 0;
 let targetRotY = 0;
-
 let sceneMesh = null;
 let targetCharacter = null;
 let characterHitbox = null;
 let mixer = null;
 let isPickedUp = false;
 
-const renderer = new THREE.WebGLRenderer({ antialias: false });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// DPR 1 is plenty sharp for glass reflection and renders 4x faster on Retina screens
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+renderer.setPixelRatio(1);
 renderer.autoClear = false;
 renderer.setScissorTest(true);
 renderer.domElement.style.display = "block";
@@ -178,42 +176,6 @@ function getProjectionBounds() {
 }
 // ==============================================================================
 
-// ===================== LOAD GLB & CHARACTER HITBOX ============================
-try {
-  const gltfLoader = new GLTFLoader();
-  const gltf = await gltfLoader.loadAsync("/assets/scene.glb");
-
-  sceneMesh = gltf.scene;
-  sceneMesh.scale.set(0.1, 0.1, 0.1);
-  sceneMesh.position.set(0, 0, 0);
-  dioramaGroup.add(sceneMesh);
-
-  if (gltf.animations && gltf.animations.length > 0) {
-    mixer = new THREE.AnimationMixer(sceneMesh);
-    gltf.animations.forEach((clip) => mixer.clipAction(clip).play());
-  }
-
-  targetCharacter = sceneMesh.getObjectByName("character") || sceneMesh;
-
-  const box = new THREE.Box3().setFromObject(targetCharacter);
-  const center = box.getCenter(new THREE.Vector3());
-  const size = box.getSize(new THREE.Vector3());
-  const radius = Math.max(size.x, size.y, size.z, 1.5) * 0.85;
-
-  characterHitbox = new THREE.Mesh(
-    new THREE.SphereGeometry(radius, 16, 16),
-    new THREE.MeshBasicMaterial({ color: 0xff00ff, wireframe: true, visible: false })
-  );
-  characterHitbox.position.copy(center);
-  characterHitbox.name = "character_hitbox";
-  dioramaGroup.add(characterHitbox);
-
-  console.log("Loaded GLB:", sceneMesh);
-} catch (err) {
-  console.error("Failed to load GLTF model:", err);
-}
-// ==============================================================================
-
 // ===================== SERIAL & ENCODER TRANSFORMS ============================
 const ROTATE_STEP = 0.12;
 const ZOOM_STEP = 0.8;
@@ -269,7 +231,6 @@ window.connectEncoders = async function () {
     port.readable.pipeTo(decoder.writable);
     const reader = decoder.readable.getReader();
 
-    console.log("ESP32 Serial Connected");
     window.dispatchEvent(new CustomEvent("serialconnected"));
 
     let buffer = "";
@@ -303,51 +264,50 @@ window.connectEncoders = async function () {
 };
 // ==============================================================================
 
+// Start render loop immediately (no blocking awaits!)
 const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
 
-if (mixer) mixer.update(dt);
-if (TURNTABLE_SPEED) targetRotY += TURNTABLE_SPEED * dt;
-dioramaGroup.rotation.y = THREE.MathUtils.lerp(dioramaGroup.rotation.y, targetRotY, 0.2);
-dioramaGroup.rotation.x = THREE.MathUtils.lerp(dioramaGroup.rotation.x, targetRotX, 0.2);
-orbitRadius = THREE.MathUtils.lerp(orbitRadius, targetOrbitRadius, 0.2);
-camera.position.z = orbitRadius;
-renderViews();
+  if (mixer) mixer.update(dt);
+  if (TURNTABLE_SPEED) targetRotY += TURNTABLE_SPEED * dt;
+
+  dioramaGroup.rotation.y = THREE.MathUtils.lerp(dioramaGroup.rotation.y, targetRotY, 0.2);
+  dioramaGroup.rotation.x = THREE.MathUtils.lerp(dioramaGroup.rotation.x, targetRotX, 0.2);
+  orbitRadius = THREE.MathUtils.lerp(orbitRadius, targetOrbitRadius, 0.2);
+  camera.position.z = orbitRadius;
+
+  renderViews();
 }
 animate();
-// ===================== MEDIAPIPE & BUILT-IN PINCH INTERACTION =================
-const vision = await FilesetResolver.forVisionTasks(
-"jsdelivr.net"
-);
-const handLandmarker = await HandLandmarker.createFromOptions(vision, {
-baseOptions: {
-modelAssetPath:
-"googleapis.com",
-delegate: "GPU",
-},
-runningMode: "VIDEO",
-numHands: 1,
-});
-const video = document.getElementById("webcam");
-if (video && navigator.mediaDevices?.getUserMedia) {
-video.srcObject = await navigator.mediaDevices.getUserMedia({ video: true });
-await video.play();
-}
+
+// ===================== PINCH & RAYCAST LOGIC ==================================
 const raycaster = new THREE.Raycaster();
 const WRIST_HEIGHT_CUTOFF = 0.78;
 const SENSITIVITY_X = 2.2;
 const SENSITIVITY_Y = 2.0;
-const castFromPinch = (point) => {
-if (!point) return null;
-camera.position.z = orbitRadius;
-camera.updateMatrixWorld();
-raycaster.setFromCamera(new THREE.Vector2(point.x, point.y), camera);
-const targets = characterHitbox ? [characterHitbox] : scene.children;
-const h = raycaster.intersectObjects(targets, true)[0];
-return h ? { object: h.object, name: h.object.name, point: h.point, distance: h.distance } : null;
+
+const pinchState = {
+  isPinching: false,
+  point: null,
+  distance: 0,
+  count: 0,
+  holdFrames: 0,
 };
+window.pinch = pinchState;
+
+const castFromPinch = (point) => {
+  if (!point) return null;
+  camera.position.z = orbitRadius;
+  camera.updateMatrixWorld();
+  raycaster.setFromCamera(new THREE.Vector2(point.x, point.y), camera);
+
+  const targets = characterHitbox ? [characterHitbox] : scene.children;
+  const h = raycaster.intersectObjects(targets, true)[0];
+  return h ? { object: h.object, name: h.object.name, point: h.point, distance: h.distance } : null;
+};
+window.castFromPinch = () => castFromPinch(pinchState.point);
 function handlePinchStart(point) {
 const hit = castFromPinch(point);
 cursorMat.color.setHex(0xff00ff);
@@ -357,7 +317,6 @@ new CustomEvent("pinchstart", { detail: { point, hit, count: pinchState.count } 
 );
 if (hit && !isPickedUp) {
 isPickedUp = true;
-console.log("Character found!", hit.name);
 if (targetCharacter) targetCharacter.position.y += 1.5;
 window.dispatchEvent(new CustomEvent("characterfound", { detail: { hit } }));
 }
@@ -373,16 +332,6 @@ targetCharacter.position.y -= 1.5;
 isPickedUp = false;
 }
 }
-// Built-in pinch tracker (no external pinch.js required)
-const pinchState = {
-isPinching: false,
-point: null,
-distance: 0,
-count: 0,
-holdFrames: 0,
-};
-window.pinch = pinchState;
-window.castFromPinch = () => castFromPinch(pinchState.point);
 function updatePinch(hand) {
 if (!hand) {
 pinchState.point = null;
@@ -418,9 +367,68 @@ handlePinchEnd(pinchState.point);
 }
 }
 }
+// ==============================================================================
+// ===================== PARALLEL ASYNC BOOTSTRAP ===============================
+// 1. Load GLB asynchronously without blocking UI or MediaPipe
+async function loadDiorama() {
+try {
+const gltfLoader = new GLTFLoader();
+const gltf = await gltfLoader.loadAsync("/assets/scene.glb");
+sceneMesh = gltf.scene;
+sceneMesh.scale.set(0.1, 0.1, 0.1);
+sceneMesh.position.set(0, 0, 0);
+dioramaGroup.add(sceneMesh);
+if (gltf.animations && gltf.animations.length > 0) {
+mixer = new THREE.AnimationMixer(sceneMesh);
+gltf.animations.forEach((clip) => mixer.clipAction(clip).play());
+}
+targetCharacter = sceneMesh.getObjectByName("character") || sceneMesh;
+const box = new THREE.Box3().setFromObject(targetCharacter);
+const center = box.getCenter(new THREE.Vector3());
+const size = box.getSize(new THREE.Vector3());
+const radius = Math.max(size.x, size.y, size.z, 1.5) * 0.85;
+characterHitbox = new THREE.Mesh(
+new THREE.SphereGeometry(radius, 16, 16),
+new THREE.MeshBasicMaterial({ color: 0xff00ff, wireframe: true, visible: false })
+);
+characterHitbox.position.copy(center);
+characterHitbox.name = "character_hitbox";
+dioramaGroup.add(characterHitbox);
+} catch (err) {
+console.error("Failed to load GLTF model:", err);
+}
+}
+// 2. Start webcam at fast 480p resolution & MediaPipe in parallel
+async function initHandTracking() {
+const video = document.getElementById("webcam");
+if (!video || !navigator.mediaDevices?.getUserMedia) return;
+const webcamPromise = navigator.mediaDevices
+.getUserMedia({
+video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+audio: false,
+})
+.then(async (stream) => {
+video.srcObject = stream;
+await video.play();
+});
+const landmarkerPromise = FilesetResolver.forVisionTasks(
+"jsdelivr.net"
+).then((vision) =>
+HandLandmarker.createFromOptions(vision, {
+baseOptions: {
+modelAssetPath:
+"googleapis.com",
+delegate: "GPU",
+},
+runningMode: "VIDEO",
+numHands: 1,
+})
+);
+// Wait for both simultaneously instead of sequentially
+const [, handLandmarker] = await Promise.all([webcamPromise, landmarkerPromise]);
 let lastVideoTime = -1;
-function renderLoop() {
-if (video && video.readyState >= 2 && video.currentTime !== lastVideoTime) {
+function trackingLoop() {
+if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
 lastVideoTime = video.currentTime;
 const result = handLandmarker.detectForVideo(video, performance.now());
 const rawHand = result.landmarks?.[0];
@@ -453,6 +461,10 @@ hitbox.position.set(((x1 + x2) / 2) * halfW, ((y1 + y2) / 2) * halfH, 0);
 hitbox.scale.set((x2 - x1) * halfW, (y2 - y1) * halfH, 1);
 }
 }
-requestAnimationFrame(renderLoop);
+requestAnimationFrame(trackingLoop);
 }
-renderLoop();
+trackingLoop();
+}
+// Fire both pipelines at the exact same millisecond
+loadDiorama();
+initHandTracking();
