@@ -1,9 +1,9 @@
 // Every tunable number in one place.
 
 // ---- Model ----
-export const MODEL_URL = "/assets/alice_with_house_final.glb";
-export const MODEL_SCALE = 1;                     // the camera fits itself to the model, so this rarely matters
-export const CHARACTER_NAME = "alice_blockbench"; // Alice's node in the model (matched by name prefix)
+export const MODEL_URL = "/assets/scene.glb";
+export const MODEL_SCALE = 1;                // the camera fits itself to the model, so this rarely matters
+export const CHARACTER_NAME = "alicia"; // Alice's node in scene.glb is "Alicia_98" (matched by name prefix, any case)
 export const PICKUP_LIFT = 0.3;              // how far Alice rises while held, as a fraction of her height
 
 // ---- Hologram layout (4 views, one per pyramid face) ----
