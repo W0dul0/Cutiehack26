@@ -39,13 +39,14 @@ export function createHandOverlay() {
   const borderMat = new THREE.LineBasicMaterial({
     color: 0x00ffff, transparent: true, opacity: BORDER_IDLE_OPACITY, depthTest: false,
   });
-  hudScene.add(new THREE.LineLoop(
+  const border = new THREE.LineLoop(
     new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(-edge, -edge, 0), new THREE.Vector3(edge, -edge, 0),
       new THREE.Vector3(edge, edge, 0), new THREE.Vector3(-edge, edge, 0),
     ]),
     borderMat
-  ));
+  );
+  hudScene.add(border);
 
   // Grey see-through hitbox square (front view only). Sits at the back so the 3D hand draws over it.
   const handBox = new THREE.Mesh(
@@ -73,6 +74,7 @@ export function createHandOverlay() {
   let glow = 0;  // 0 = idle, 1 = fully shining (eases between them)
   let time = 0;
   let showHitboxes = SHOW_HITBOXES;
+  border.visible = showHitboxes;
 
   return {
     hudScene, // pass to hologram.render()
@@ -81,9 +83,10 @@ export function createHandOverlay() {
       return showHitboxes;
     },
 
-    // Show/hide the grey square and the red bubble (hit detection and the 3D hand keep working)
+    // Show/hide the grey square, the red bubble and the blue border (hit detection and the 3D hand keep working)
     setHitboxesShown(shown) {
       showHitboxes = shown;
+      border.visible = shown;
       if (bubble) bubble.visible = shown;
     },
 

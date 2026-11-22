@@ -59,7 +59,7 @@ export const ALICE_BUBBLE_SCALE = 1.0;     // Alice's red hitbox bubble: 1 = jus
 
 // Confetti GIF shown across all 4 views for ALICE_TOUCHED_SECONDS after Alice is touched
 export const HIT_GIF_URL = "/assets/cf506d6998d68de01e9171f30fc4e287.gif";
-export const HIT_GIF_SIZE = 1.0;           // 1 = fills each view
+export const HIT_GIF_SIZE = 1.0;           // 1 = fills the blue border in each view
 
 // 3D hand drawn on top of the grey square, scaled with it
 export const HAND_GLB_URL = "/assets/hand.glb";
