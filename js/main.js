@@ -36,7 +36,8 @@ const VIEWS = [
 const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
 scene.add(ambientLight);
 const dirLight = new THREE.DirectionalLight(0xffffff, 2);
-dirLight.position.set(3, 5, 4);
+const LIGHT_OFFSET = new THREE.Vector3(3, 5, 4);
+dirLight.position.copy(LIGHT_OFFSET);
 scene.add(dirLight);
 
 let sceneMesh = null;
@@ -96,6 +97,10 @@ function renderViews() {
     viewCamera.up.set(0, 1, 0);
     viewCamera.lookAt(target);
     viewCamera.rotateZ(v.roll);
+
+    // Keep the key light on the same side as each view's camera, so the back and side views
+    // are lit like the front instead of being in shadow from a fixed world-space light.
+    dirLight.position.copy(viewCamera.position).add(LIGHT_OFFSET);
 
     // The hitbox lives on layer 1 and is only drawn in the front view
     if (v.front) viewCamera.layers.enable(1); else viewCamera.layers.disable(1);
@@ -226,7 +231,7 @@ function renderLoop() {
   if (video && video.readyState >= 2 && video.currentTime !== lastVideoTime) {
     lastVideoTime = video.currentTime;
     const result = handLandmarker.detectForVideo(video, performance.now());
-    console.log(result.landmarks, result.handedness);
+    // (removed the per-frame console.log of landmarks: logging ~30 big arrays/sec slows the render loop)
 
     if (pinchDetector) {   // feed each new frame to the pinch detector (errors are contained)
       try {
@@ -239,7 +244,7 @@ function renderLoop() {
 
     // Hitbox follows the hand whenever the pinch detector sees one
     const hand = result.landmarks?.[0];
-    hitbox.visible = SHOW_HITBOX && !!pinchDetector?.state.point;
+    hitbox.visible = SHOW_HITBOX && !!hand && !!pinchDetector?.state.point;
     if (hitbox.visible) {
       const pts = hand.slice(2, 9);
       const xs = pts.map(p => (1 - p.x) * 2 - 1), ys = pts.map(p => 1 - p.y * 2);
