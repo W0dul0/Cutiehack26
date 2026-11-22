@@ -1,6 +1,27 @@
 // Loads the GLB once, centers it, and finds Alice (what the hand hitbox can hit and pick up).
 import { THREE, GLTFLoader } from "./libs.js";
-import { MODEL_URL, MODEL_SCALE, CHARACTER_NAME, PICKUP_LIFT, ALICE_BUBBLE_SCALE } from "./config.js";
+import {
+  MODEL_URL, MODEL_SCALE, CHARACTER_NAME, PICKUP_LIFT, ALICE_BUBBLE_SCALE,
+  HAND_GLB_URL, HAND_MODEL_ROTATION,
+} from "./config.js";
+
+// The 3D hand, stood up (HAND_MODEL_ROTATION) and fitted into a 1x1 square centered on the origin,
+// so scaling it by the grey square's size makes it match the square.
+export async function loadHandModel() {
+  const hand = (await new GLTFLoader().loadAsync(HAND_GLB_URL)).scene;
+  hand.rotation.set(...HAND_MODEL_ROTATION.map(THREE.MathUtils.degToRad));
+  hand.traverse((o) => { if (o.isMesh) o.frustumCulled = false; }); // skinned meshes can be culled by mistake
+
+  const holder = new THREE.Group();
+  holder.add(hand);
+  holder.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(hand);
+  const size = box.getSize(new THREE.Vector3());
+  const fit = 1 / Math.max(size.x, size.y);
+  hand.scale.multiplyScalar(fit);
+  hand.position.copy(box.getCenter(new THREE.Vector3()).multiplyScalar(-fit));
+  return holder;
+}
 
 export async function loadModel(parent) {
   const gltf = await new GLTFLoader().loadAsync(MODEL_URL);

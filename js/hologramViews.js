@@ -83,7 +83,11 @@ export function createHologram(container, scene, light) {
         renderer.setViewport(v.x, v.y, viewSize, viewSize);
         renderer.setScissor(v.x, v.y, viewSize, viewSize);
         renderer.render(scene, viewCamera);
-        if (hudScene) renderer.render(hudScene, hudCamera);
+        if (hudScene) {
+          renderer.clearDepth(); // HUD always draws on top of the model (only inside this view's scissor)
+          hudCamera.layers.mask = viewCamera.layers.mask; // front-only HUD items stay in the front view
+          renderer.render(hudScene, hudCamera);
+        }
       }
     },
   };

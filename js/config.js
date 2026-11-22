@@ -1,9 +1,9 @@
 // Every tunable number in one place.
 
 // ---- Model ----
-export const MODEL_URL = "/assets/scene.glb";
-export const MODEL_SCALE = 0.1;
-export const CHARACTER_NAME = "alice_anime"; // Alice's node in scene.glb (matched by name prefix)
+export const MODEL_URL = "/assets/alice_with_house_final.glb";
+export const MODEL_SCALE = 1;                     // the camera fits itself to the model, so this rarely matters
+export const CHARACTER_NAME = "alice_blockbench"; // Alice's node in the model (matched by name prefix)
 export const PICKUP_LIFT = 0.3;              // how far Alice rises while held, as a fraction of her height
 
 // ---- Hologram layout (4 views, one per pyramid face) ----
@@ -40,6 +40,11 @@ export const SHOW_HITBOXES = true;         // start with the grey square + Alice
 export const HAND_BOX_MAGNIFICATION = 1.0; // how much of the front view the hand can reach (1 = all of it)
 export const HAND_BOX_GROW = 1.3;          // square size vs. the fingers it covers (higher = bigger hitbox)
 export const ALICE_BUBBLE_SCALE = 1.0;     // Alice's red hitbox bubble: 1 = just covers her height
+
+// 3D hand drawn on top of the grey square, scaled with it
+export const HAND_GLB_URL = "/assets/hand.glb";
+export const HAND_MODEL_SCALE = 1.0;         // 1 = hand fills the grey square
+export const HAND_MODEL_ROTATION = [90, 0, 0]; // degrees (x, y, z); [90,0,0] stands the hand up, fingers to the top
 export const HAND_BOX_OPACITY = 0.5;       // 0 = invisible, 1 = solid grey
 export const OVERLAY_FADE = 13;            // how fast the blue border brightens/dims
 export const BORDER_IDLE_OPACITY = 0.25;   // blue "touch area" border while no hand is seen
