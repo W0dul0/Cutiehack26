@@ -1,5 +1,7 @@
 // Thumb + index pinch detection. Pure logic: no Three.js, no DOM.
-import { PINCH_DISTANCE, PINCH_HOLD_FRAMES, PINCH_SENSITIVITY_X, PINCH_SENSITIVITY_Y } from "./config.js";
+import { PINCH_DISTANCE, PINCH_HOLD_FRAMES, PINCH_SENSITIVITY_X, PINCH_SENSITIVITY_Y, INVERT_HAND } from "./config.js";
+
+const HAND_DIR = INVERT_HAND ? -1 : 1; // -1 = hand-cam movement inverted
 
 const THUMB_TIP = 4;
 const INDEX_TIP = 8;
@@ -28,8 +30,8 @@ export function createPinchDetector({ onStart, onEnd }) {
 
       const thumb = hand[THUMB_TIP], index = hand[INDEX_TIP];
       state.point = {
-        x: clamp1(((1 - (thumb.x + index.x) / 2) * 2 - 1) * PINCH_SENSITIVITY_X),
-        y: clamp1((1 - (thumb.y + index.y)) * PINCH_SENSITIVITY_Y),
+        x: clamp1(((1 - (thumb.x + index.x) / 2) * 2 - 1) * PINCH_SENSITIVITY_X * HAND_DIR),
+        y: clamp1((1 - (thumb.y + index.y)) * PINCH_SENSITIVITY_Y * HAND_DIR),
       };
       state.distance = Math.hypot(thumb.x - index.x, thumb.y - index.y);
 

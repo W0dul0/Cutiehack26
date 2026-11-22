@@ -1,16 +1,18 @@
 // Camera angles: draws the scene 4 times (front/right/back/left), one view per pyramid face.
 import { THREE } from "./libs.js";
-import { VIEW_SIZE, CENTER_GAP, FOV, START_DISTANCE, LIGHT_OFFSET } from "./config.js";
+import { VIEW_SIZE, CENTER_GAP, FOV, START_DISTANCE, LIGHT_OFFSET, FLIP_VIEWS } from "./config.js";
 
 export const HUD_LAYER = 1; // objects on this layer only appear in the front view
 
 // angle = where the camera sits around the model (0 = front)
-// roll  = turns the image so the model's top points at the screen center (the pyramid tip)
+// roll  = turns the image so the model's top points at the screen center (the pyramid tip).
+//         FLIP_VIEWS adds 180°, so the top points OUTWARD instead (pyramid tip resting on the screen).
+const FLIP = FLIP_VIEWS ? Math.PI : 0;
 const VIEWS = [
-  { slot: "bottom", angle: 0,            roll: 0,            front: true },
-  { slot: "right",  angle: Math.PI / 2,  roll: -Math.PI / 2 },
-  { slot: "top",    angle: Math.PI,      roll: Math.PI },
-  { slot: "left",   angle: -Math.PI / 2, roll: Math.PI / 2 },
+  { slot: "bottom", angle: 0,            roll: 0 + FLIP,            front: true },
+  { slot: "right",  angle: Math.PI / 2,  roll: -Math.PI / 2 + FLIP },
+  { slot: "top",    angle: Math.PI,      roll: Math.PI + FLIP },
+  { slot: "left",   angle: -Math.PI / 2, roll: Math.PI / 2 + FLIP },
 ];
 
 // Front camera: matches the bottom view. Pinch raycasts and the hand overlay aim through it.
@@ -40,6 +42,7 @@ export function createHologram(container, scene, light) {
   // Canvas is a square; each view is a smaller square centered on one edge.
   // WebGL measures y from the BOTTOM, so "bottom" is y = gap.
   let size = 0, viewSize = 0;
+  const resizeListeners = [];
   function resize() {
     size = Math.min(container.clientWidth || 660, container.clientHeight || 660);
     renderer.setSize(size, size);
@@ -47,12 +50,21 @@ export function createHologram(container, scene, light) {
     const mid = Math.floor((size - viewSize) / 2), far = size - viewSize - CENTER_GAP, g = CENTER_GAP;
     const corners = { bottom: [mid, g], top: [mid, far], left: [g, mid], right: [far, mid] };
     for (const v of VIEWS) [v.x, v.y] = corners[v.slot];
+    resizeListeners.forEach((fn) => fn());
   }
   resize();
   new ResizeObserver(resize).observe(container);
 
   return {
     renderer,
+
+    // Each view's square in CSS pixels (top-left origin) + its roll, for HTML overlays like the hit GIF
+    viewRects() {
+      return VIEWS.map((v) => ({ left: v.x, top: size - v.y - viewSize, size: viewSize, roll: v.roll }));
+    },
+    onResize(fn) {
+      resizeListeners.push(fn);
+    },
 
     // How close/far the cameras can see; set from the model's size so nothing is cut off
     setClipRange(near, far) {
@@ -86,6 +98,7 @@ export function createHologram(container, scene, light) {
         if (hudScene) {
           renderer.clearDepth(); // HUD always draws on top of the model (only inside this view's scissor)
           hudCamera.layers.mask = viewCamera.layers.mask; // front-only HUD items stay in the front view
+          hudCamera.rotation.z = v.roll; // turn the HUD with the view so the hand square stays lined up with the model
           renderer.render(hudScene, hudCamera);
         }
       }

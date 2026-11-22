@@ -1,14 +1,17 @@
-// Loads the GLB once, centers it, and finds Alice (what the hand hitbox can hit and pick up).
+// Loads the map + Alice, hides Alice at a random spot on the floor, and loads the 3D hand.
 import { THREE, GLTFLoader } from "./libs.js";
 import {
-  MODEL_URL, MODEL_SCALE, CHARACTER_NAME, PICKUP_LIFT, ALICE_BUBBLE_SCALE,
+  MAP_URL, ALICE_URL, REMOVE_MAP_ALICE, PICKUP_LIFT, ALICE_BUBBLE_SCALE,
+  ALICE_CLEARANCE, ALICE_FLOOR_TOLERANCE, ALICE_PLACE_ATTEMPTS, ALICE_MOVE_MIN_DISTANCE,
   HAND_GLB_URL, HAND_MODEL_ROTATION,
 } from "./config.js";
+
+const loader = new GLTFLoader();
 
 // The 3D hand, stood up (HAND_MODEL_ROTATION) and fitted into a 1x1 square centered on the origin,
 // so scaling it by the grey square's size makes it match the square.
 export async function loadHandModel() {
-  const hand = (await new GLTFLoader().loadAsync(HAND_GLB_URL)).scene;
+  const hand = (await loader.loadAsync(HAND_GLB_URL)).scene;
   hand.rotation.set(...HAND_MODEL_ROTATION.map(THREE.MathUtils.degToRad));
   hand.traverse((o) => { if (o.isMesh) o.frustumCulled = false; }); // skinned meshes can be culled by mistake
 
@@ -23,46 +26,135 @@ export async function loadHandModel() {
   return holder;
 }
 
-export async function loadModel(parent) {
-  const gltf = await new GLTFLoader().loadAsync(MODEL_URL);
-  const model = gltf.scene;
-  model.scale.setScalar(MODEL_SCALE);
-  parent.add(model);
-  parent.updateWorldMatrix(true, false);
+// Loads both models into `parent` (modelRoot). Returns what the rest of the app needs:
+//   radius          size of the map, for fitting the camera
+//   character       Alice (move her .position to lift her)
+//   characterSphere her hitbox bubble, in parent space
+//   liftAmount      how far a pinch lifts her
+export async function loadWorld(parent) {
+  const [mapGltf, aliceGltf] = await Promise.all([loader.loadAsync(MAP_URL), loader.loadAsync(ALICE_URL)]);
+  const map = mapGltf.scene;
 
-  // Center the model on its parent so it rotates in place instead of swinging out of the views
-  const bounds = new THREE.Box3().setFromObject(model);
-  const radius = bounds.getBoundingSphere(new THREE.Sphere()).radius;
-  model.position.sub(parent.worldToLocal(bounds.getCenter(new THREE.Vector3())));
+  // Build everything in a standalone group (no parent rotation yet) so "down" really is down
+  const world = new THREE.Group();
+  world.add(map);
+  removeBuiltInAlice(map);
 
-  let mixer = null;
-  if (gltf.animations.length) {
-    mixer = new THREE.AnimationMixer(model);
-    for (const clip of gltf.animations) mixer.clipAction(clip).play();
-  }
+  // Alice sits in a pivot at her feet, so she can be moved and turned around her own center
+  const alice = new THREE.Group();
+  alice.name = "Alice";
+  world.add(alice);
+  alice.add(aliceGltf.scene);
+  world.updateMatrixWorld(true);
+  const original = new THREE.Box3().setFromObject(aliceGltf.scene);
+  const feet = new THREE.Vector3((original.min.x + original.max.x) / 2, original.min.y, (original.min.z + original.max.z) / 2);
+  aliceGltf.scene.position.sub(feet);
+  alice.position.copy(feet);
 
-  // Alice: her bounds (inside `parent`, so they follow its spin/tilt) are what the hand hitbox is tested against
-  const character = findCharacter(model);
-  const characterBox = new THREE.Box3().setFromObject(character).applyMatrix4(parent.matrixWorld.clone().invert());
-  const size = characterBox.getSize(new THREE.Vector3());
-  const liftAmount = (size.y * PICKUP_LIFT) / character.parent.getWorldScale(new THREE.Vector3()).y; // in her own units
+  const hide = createHider(world, map, alice, original.getSize(new THREE.Vector3()), feet.y);
+  hide();
 
-  // Her hitbox: a sphere (the red bubble) around her, sized to her tallest side
-  const characterSphere = new THREE.Sphere(
-    characterBox.getCenter(new THREE.Vector3()),
-    (Math.max(size.x, size.y, size.z) / 2) * ALICE_BUBBLE_SCALE
-  );
+  // Measure Alice and the map while `world` is still standalone at the origin
+  world.updateMatrixWorld(true);
+  const aliceSize = new THREE.Box3().setFromObject(alice).getSize(new THREE.Vector3());
+  const mapSphere = new THREE.Box3().setFromObject(map).getBoundingSphere(new THREE.Sphere());
 
-  return { model, mixer, radius, character, characterSphere, liftAmount };
+  // Center the map on the parent so it spins in place
+  world.position.copy(mapSphere.center).negate();
+  parent.add(world);
+
+  // Alice's hitbox bubble, in parent space. Kept up to date in place, so everyone holding it sees moves.
+  const characterSphere = new THREE.Sphere(new THREE.Vector3(), (Math.max(aliceSize.x, aliceSize.y, aliceSize.z) / 2) * ALICE_BUBBLE_SCALE);
+  const centerOffset = new THREE.Vector3(0, aliceSize.y / 2, 0); // her pivot is at her feet
+  const updateSphere = () => characterSphere.center.copy(alice.position).add(centerOffset).add(world.position);
+  updateSphere();
+
+  return {
+    radius: mapSphere.radius,
+    character: alice,
+    characterSphere,
+    liftAmount: aliceSize.y * PICKUP_LIFT,
+
+    // Hide Alice somewhere new, away from where she is now. characterSphere follows.
+    moveAlice() {
+      parent.updateWorldMatrix(true, true);
+      hide({ awayFrom: alice.position.clone() });
+      updateSphere();
+    },
+  };
 }
 
-// First node whose name starts with CHARACTER_NAME (the loader strips "." from names: "alice_anime.glb" -> "alice_animeglb")
-function findCharacter(model) {
-  const prefix = CHARACTER_NAME.toLowerCase();
-  let found = null;
-  model.traverse((o) => {
-    if (!found && o.name.toLowerCase().startsWith(prefix)) found = o;
-  });
-  if (!found) console.warn(`No "${CHARACTER_NAME}" node in the model, so the whole model counts as Alice`);
-  return found || model;
+// The map ships with its own Alice; remove her (raycasts would still hit her if she were only hidden)
+function removeBuiltInAlice(map) {
+  if (!REMOVE_MAP_ALICE) return;
+  const prefix = REMOVE_MAP_ALICE.toLowerCase();
+  const found = [];
+  map.traverse((o) => { if (o.name.toLowerCase().startsWith(prefix)) found.push(o); });
+  found.forEach((o) => o.removeFromParent());
+}
+
+// Returns hide({ awayFrom }): tries random spots until one has flat, empty floor under Alice's whole footprint.
+// Rays are dropped straight down from above the map: if any lands higher than the floor (a rock, the house,
+// a mushroom...) or misses the map entirely (off the edge), that spot is rejected.
+// With awayFrom, the new spot must also be ALICE_MOVE_MIN_DISTANCE footprints away (or as far as the map allows).
+// Works in `world`'s own coordinates, so it still works after the map has been spun/tilted.
+function createHider(world, map, alice, aliceSize, floorY) {
+  const meshes = [];
+  map.traverse((o) => { if (o.isMesh) meshes.push(o); });
+  world.updateMatrixWorld(true);
+  const mapBox = new THREE.Box3().setFromObject(map); // world is at the origin right now, so this is in world-local coords
+  const ray = new THREE.Raycaster();
+  const from = new THREE.Vector3();
+  const down = new THREE.Vector3();
+  const footRadius = (Math.hypot(aliceSize.x, aliceSize.z) / 2) * ALICE_CLEARANCE; // covers her at any rotation
+  const tolerance = aliceSize.y * ALICE_FLOOR_TOLERANCE;
+
+  // Height (world-local) of the first thing a ray dropped at (x, z) hits, or null if it misses the map
+  const surfaceAt = (x, z) => {
+    from.set(x, mapBox.max.y + 1, z).applyMatrix4(world.matrixWorld);
+    down.set(0, -1, 0).transformDirection(world.matrixWorld);
+    ray.set(from, down);
+    const hit = ray.intersectObjects(meshes, false)[0];
+    return hit ? world.worldToLocal(hit.point).y : null;
+  };
+
+  // Footprint samples: center, an inner ring and an outer ring
+  const offsets = [[0, 0]];
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    offsets.push([Math.cos(a) * footRadius, Math.sin(a) * footRadius]);
+    offsets.push([Math.cos(a + 0.4) * footRadius * 0.5, Math.sin(a + 0.4) * footRadius * 0.5]);
+  }
+
+  const rand = (lo, hi) => lo + Math.random() * (hi - lo);
+  const minDistance = footRadius * 2 * ALICE_MOVE_MIN_DISTANCE;
+
+  return function hide({ awayFrom = null } = {}) {
+    let best = null; // farthest clear spot so far: { x, y, z, distance }
+    for (let attempt = 1; attempt <= ALICE_PLACE_ATTEMPTS; attempt++) {
+      const x = rand(mapBox.min.x + footRadius, mapBox.max.x - footRadius);
+      const z = rand(mapBox.min.z + footRadius, mapBox.max.z - footRadius);
+
+      let highest = -Infinity;
+      const clear = offsets.every(([dx, dz]) => {
+        const y = surfaceAt(x + dx, z + dz);
+        if (y === null || Math.abs(y - floorY) > tolerance) return false;
+        highest = Math.max(highest, y);
+        return true;
+      });
+      if (!clear) continue;
+
+      const distance = awayFrom ? Math.hypot(x - awayFrom.x, z - awayFrom.z) : Infinity;
+      if (!best || distance > best.distance) best = { x, y: highest, z, distance };
+      if (distance >= minDistance) break; // far enough, done
+    }
+
+    if (!best) {
+      console.warn("No clear spot found for Alice; she stays where she is");
+      return;
+    }
+    alice.position.set(best.x, best.y, best.z); // feet exactly on the floor
+    alice.rotation.y = Math.random() * Math.PI * 2;
+    console.log(`Alice hidden at (${best.x.toFixed(2)}, ${best.z.toFixed(2)})`);
+  };
 }

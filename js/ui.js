@@ -1,5 +1,8 @@
 // Debug panel buttons and status text.
-export function initDebugPanel({ hitboxesShown, onToggleHitboxes }) {
+export function initDebugPanel({ hitboxesShown, onToggleHitboxes, onMoveAlice }) {
+  // Move Alice: hide her somewhere new
+  document.getElementById("move-alice-button")?.addEventListener("click", onMoveAlice);
+
   // Hide/Show Hitboxes: the grey hand square and Alice's red bubble
   const hitboxButton = document.getElementById("hitbox-button");
   let shown = hitboxesShown;
@@ -48,10 +51,15 @@ export function initDebugPanel({ hitboxesShown, onToggleHitboxes }) {
   window.addEventListener("serialdisconnected", () => showConnected(false));
 
   // "Hitting Alice" card: true (green) while the grey hand hitbox overlaps her
+  const showFlag = (el, on) => {
+    if (!el) return;
+    el.textContent = String(on);
+    el.classList.toggle("hit", on);
+  };
   const aliceStatus = document.getElementById("alice-status");
-  window.addEventListener("alicehit", (e) => {
-    if (!aliceStatus) return;
-    aliceStatus.textContent = String(e.detail.isHittingAlice);
-    aliceStatus.classList.toggle("hit", e.detail.isHittingAlice);
-  });
+  window.addEventListener("alicehit", (e) => showFlag(aliceStatus, e.detail.isHittingAlice));
+
+  // "Alice was touched" card: true (green) for 2 seconds after each touch
+  const touchedStatus = document.getElementById("alice-touched-status");
+  window.addEventListener("alicetouched", (e) => showFlag(touchedStatus, e.detail.aliceWasTouched));
 }

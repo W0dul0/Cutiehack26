@@ -12,11 +12,12 @@
 //   handOverlay.js   blue border, grey hand square + 3D hand, Alice's red bubble
 //   pickup.js        is the hitbox touching Alice? + pinch-to-lift
 //   ui.js            debug panel buttons and cards
+//   hitGif.js        confetti GIF over all 4 views after the hand touches Alice
 import { THREE } from "./libs.js";
-import { FOV, MODEL_FILL } from "./config.js";
+import { FOV, MODEL_FILL, ALICE_TOUCHED_SECONDS } from "./config.js";
 import { scene, keyLight, modelRoot } from "./stage.js";
 import { createHologram, frontCamera, setCameraDistance } from "./hologramViews.js";
-import { loadModel, loadHandModel } from "./model.js";
+import { loadWorld, loadHandModel } from "./model.js";
 import { view, applyControl, updateView, bindKeyboard, fitZoomTo } from "./controls.js";
 import { connectEncoders } from "./serial.js";
 import { startHandTracking } from "./handTracking.js";
@@ -24,17 +25,41 @@ import { createPinchDetector } from "./pinch.js";
 import { createHandOverlay, handSquare } from "./handOverlay.js";
 import { createPickup } from "./pickup.js";
 import { initDebugPanel } from "./ui.js";
+import { createHitGif } from "./hitGif.js";
 
 const container = document.getElementById("Three.js");
 if (!container) throw new Error('Could not find element with id="Three.js"');
 
 const hologram = createHologram(container, scene, keyLight);
+const hitGif = createHitGif(container, hologram);
 const overlay = createHandOverlay();
 const pickup = createPickup(frontCamera, modelRoot);
 const emit = (name, detail) => window.dispatchEvent(new CustomEvent(name, { detail }));
 
-// true while the grey hand hitbox overlaps Alice (shown in the debug panel's "Hitting Alice" card)
-const hitState = { isHittingAlice: false };
+// isHittingAlice:  true while the grey hand hitbox overlaps Alice's red bubble
+// aliceWasTouched: true for ALICE_TOUCHED_SECONDS after a touch (confetti plays, Alice has already moved)
+const hitState = { isHittingAlice: false, aliceWasTouched: false };
+let world = null; // loadWorld() result, once the models are in
+
+// Hide Alice somewhere new (the "Move Alice" button, and automatically after she's touched)
+function moveAlice() {
+  if (!world) return;
+  pickup.release(); // drop her first if a pinch is holding her
+  world.moveAlice();
+  emit("alicemoved");
+}
+
+function onAliceTouched() {
+  hitState.aliceWasTouched = true;
+  hitGif.setShown(true);
+  emit("alicetouched", { aliceWasTouched: true });
+  moveAlice();
+  setTimeout(() => {
+    hitState.aliceWasTouched = false;
+    hitGif.setShown(false);
+    emit("alicetouched", { aliceWasTouched: false });
+  }, ALICE_TOUCHED_SECONDS * 1000);
+}
 
 const pinch = createPinchDetector({
   onStart(point) {
@@ -50,17 +75,18 @@ const pinch = createPinchDetector({
 // Hooks for the console / other scripts
 window.pinch = pinch.state;
 window.hitState = hitState;
+window.moveAlice = moveAlice;
 window.connectEncoders = () => connectEncoders(applyControl);
 
 bindKeyboard();
 initDebugPanel({
   hitboxesShown: overlay.hitboxesShown,
   onToggleHitboxes: (shown) => overlay.setHitboxesShown(shown),
+  onMoveAlice: moveAlice,
 });
 connectEncoders(applyControl, { askUser: false }); // reconnect an already-allowed ESP32 without a click
 
 // ---------- One loop for everything ----------
-let mixer = null;
 let tracker = null;
 let square = null; // the hand hitbox in front-view coords, or null when no hand
 const clock = new THREE.Clock();
@@ -74,7 +100,6 @@ hologram.renderer.setAnimationLoop(() => {
     square = hand ? handSquare(hand) : null;
   }
 
-  mixer?.update(dt);
   updateView(dt);
   modelRoot.rotation.set(view.tilt, view.spin, 0);
   setCameraDistance(view.distance);
@@ -83,6 +108,8 @@ hologram.renderer.setAnimationLoop(() => {
   if (hitting !== hitState.isHittingAlice) {
     hitState.isHittingAlice = hitting;
     emit("alicehit", { isHittingAlice: hitting });
+    // A new touch counts once; touches during the 2-second celebration are ignored
+    if (hitting && !hitState.aliceWasTouched) onAliceTouched();
   }
 
   overlay.update(dt, square, hitting);
@@ -90,9 +117,9 @@ hologram.renderer.setAnimationLoop(() => {
 });
 
 // ---------- Load the model and start the webcam at the same time ----------
-loadModel(modelRoot)
+loadWorld(modelRoot)
   .then((loaded) => {
-    mixer = loaded.mixer;
+    world = loaded;
     pickup.setTarget(loaded);
     overlay.showAliceBubble(modelRoot, loaded.characterSphere);
 

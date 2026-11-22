@@ -150,6 +150,7 @@ section {
 
 #hide-button,
 #hitbox-button,
+#move-alice-button,
 #connect-button {
   background: #8b5cf6;
   color: white;
@@ -174,12 +175,14 @@ section {
 }
 
 /* "Hitting Alice" card: red = false, green = true */
-#alice-status {
+#alice-status,
+#alice-touched-status {
   color: #ff6b6b;
   font-weight: bold;
 }
 
-#alice-status.hit {
+#alice-status.hit,
+#alice-touched-status.hit {
   color: #4ade80;
 }
 
