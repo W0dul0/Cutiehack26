@@ -8,12 +8,30 @@ if (!container) {
 }
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x101014);
+scene.background = new THREE.Color(0x000000); // pure black = invisible on the pyramid
 
-const width = container.clientWidth || 980;
-const height = container.clientHeight || 980;
-const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 30);
-camera.position.set(0, 0, 20);
+// ===================== PEPPER'S GHOST (4 scissored views) =====================
+const VIEW_RATIO = 0.33;     // each view's side as a fraction of the square canvas
+const CENTER_GAP = 0;        // px each view is pushed outward from the center
+const ORBIT_RADIUS = 20;     // camera distance from the model
+const TURNTABLE_SPEED = 0.4; // radians/sec the model spins on its own (0 = off)
+
+// `camera` is the FRONT view camera. The pinch raycast and the hitbox use it, so
+// pinch coordinates (-1..1) map onto the bottom (front) view.
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+camera.position.set(0, 0, ORBIT_RADIUS);
+
+// `viewCamera` is reused to draw all four views.
+const viewCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+const target = new THREE.Vector3(0, 0, 0);
+
+// angle = camera azimuth around Y (0 = +Z, the front); roll makes the model's top point at the center.
+const VIEWS = [
+  { slot: "bottom", angle: 0,            roll: 0,            front: true },
+  { slot: "right",  angle: Math.PI / 2,  roll: -Math.PI / 2 },
+  { slot: "top",    angle: Math.PI,      roll: Math.PI },
+  { slot: "left",   angle: -Math.PI / 2, roll: Math.PI / 2 },
+];
 
 const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
 scene.add(ambientLight);
@@ -24,15 +42,70 @@ scene.add(dirLight);
 let sceneMesh = null;
 
 const renderer = new THREE.WebGLRenderer({ antialias: false });
-renderer.setSize(width, height);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.autoClear = false;     // cleared manually once per frame
+renderer.setScissorTest(true);  // each view only draws inside its own rectangle
+renderer.domElement.style.display = "block"; // removes the inline-canvas gap that makes the container grow/shift
 container.appendChild(renderer.domElement);
 
-/*test cube
-const geometry = new THREE.BoxGeometry(1, 1, 1);
-const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-const cube = new THREE.Mesh(geometry, material);
-scene.add(cube);
-*/
+let canvasW = 0, canvasH = 0;
+function resize() {
+  // Use the container's size, but fall back to a square if it has no real height yet
+  let w = container.clientWidth || 980;
+  let h = container.clientHeight;
+  if (!h || h < 50) h = w;
+  canvasW = w;
+  canvasH = h;
+  renderer.setSize(canvasW, canvasH);
+}
+resize();
+window.addEventListener("resize", resize);
+new ResizeObserver(resize).observe(container);
+
+// WebGL viewport origin is the bottom-left corner
+function slotRect(slot) {
+  const size = Math.min(canvasW, canvasH);
+  const s = Math.floor(size * VIEW_RATIO);
+  const ox = Math.floor((canvasW - size) / 2);
+  const oy = Math.floor((canvasH - size) / 2);
+  const cx = ox + Math.floor((size - s) / 2);
+  const cy = oy + Math.floor((size - s) / 2);
+  const g = CENTER_GAP;
+  switch (slot) {
+    case "bottom": return { x: cx,            y: oy + g,            s };
+    case "top":    return { x: cx,            y: oy + size - s - g, s };
+    case "left":   return { x: ox + g,        y: cy,                s };
+    case "right":  return { x: ox + size - s - g, y: cy,            s };
+  }
+}
+
+function renderViews() {
+  renderer.setViewport(0, 0, canvasW, canvasH);
+  renderer.setScissor(0, 0, canvasW, canvasH);
+  renderer.setClearColor(0x000000, 1);
+  renderer.clear();
+
+  for (const v of VIEWS) {
+    const r = slotRect(v.slot);
+
+    viewCamera.position.set(
+      target.x + Math.sin(v.angle) * ORBIT_RADIUS,
+      target.y,
+      target.z + Math.cos(v.angle) * ORBIT_RADIUS
+    );
+    viewCamera.up.set(0, 1, 0);
+    viewCamera.lookAt(target);
+    viewCamera.rotateZ(v.roll);
+
+    // The hitbox lives on layer 1 and is only drawn in the front view
+    if (v.front) viewCamera.layers.enable(1); else viewCamera.layers.disable(1);
+
+    renderer.setViewport(r.x, r.y, r.s, r.s);
+    renderer.setScissor(r.x, r.y, r.s, r.s);
+    renderer.render(scene, viewCamera);
+  }
+}
+// ==============================================================================
 
 try {
   const gltfLoader = new GLTFLoader();
@@ -48,10 +121,12 @@ try {
   console.error("Failed to load GLTF model:", err);
 }
 
+const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
-
-  renderer.render(scene, camera);
+  const dt = clock.getDelta();
+  if (sceneMesh && TURNTABLE_SPEED) sceneMesh.rotation.y += TURNTABLE_SPEED * dt;
+  renderViews();
 }
 animate();
 
@@ -85,16 +160,18 @@ if (video && navigator.mediaDevices?.getUserMedia) {
 //   Events (fire once each):  "pinchstart" / "pinchend"   e.detail = { value, count, point, hit }
 //   hit = { object, name, point, distance, uv, face } from a Three.js raycast, or null
 //     window.addEventListener("pinchstart", (e) => { if (e.detail.hit) console.log(e.detail.hit.name); });
+// With four views, pinch coordinates map onto the FRONT (bottom) view.
 // Everything here sits in ONE try/catch, so if pinch.js is missing or broken the rest of the app still runs.
 let pinchDetector = null;
 try {
   const { createPinchDetector } = await import("./pinch.js");
   const raycaster = new THREE.Raycaster();
 
-  // Ray from the camera through the pinch point. Never throws: any problem just means "no hit".
+  // Ray from the front camera through the pinch point. Never throws: any problem just means "no hit".
   const castFromPinch = (point) => {
     try {
       if (!point) return null;
+      camera.updateMatrixWorld();
       raycaster.setFromCamera(new THREE.Vector2(point.x, point.y), camera);
       const h = raycaster.intersectObjects(scene.children, true)[0];
       return h ? { object: h.object, name: h.object.name, point: h.point, distance: h.distance, uv: h.uv, face: h.face } : null;
@@ -126,9 +203,9 @@ try {
 // ===================== HITBOX (grey cast of the pinch area) =====================
 // Grey 50% plane at the model's depth (z=0), in the same mirrored -1..1 screen space the
 // pinch raycast uses. Covers thumb 2-4 + index 5-8 so it stays a rough rectangle even
-// when tips 4 and 8 share the same X or Y.
+// when tips 4 and 8 share the same X or Y. Drawn in the front (bottom) view only.
 const SHOW_HITBOX = true;        // false = hide the hitbox
-const HITBOX_MAGNIFICATION = 0.5; // 1 = full camera view; lower = smaller box / less area covered
+const HITBOX_MAGNIFICATION = 0.5; // 1 = full front-view area; lower = smaller box / less area covered
 const hitbox = new THREE.Mesh(
   new THREE.PlaneGeometry(1, 1),
   // depthTest off + high renderOrder: always drawn on top of everything (temporary debug visual)
@@ -136,6 +213,7 @@ const hitbox = new THREE.Mesh(
 );
 hitbox.renderOrder = 999;
 hitbox.visible = false;
+hitbox.layers.set(1);      // only the front view camera renders layer 1
 hitbox.raycast = () => {}; // don't let the pinch raycast hit its own hitbox
 scene.add(hitbox);
 const halfH = camera.position.z * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * HITBOX_MAGNIFICATION; // world half-height at z=0
