@@ -127,15 +127,18 @@ try {
 // Grey 50% plane at the model's depth (z=0), in the same mirrored -1..1 screen space the
 // pinch raycast uses. Covers thumb 2-4 + index 5-8 so it stays a rough rectangle even
 // when tips 4 and 8 share the same X or Y.
-const SHOW_HITBOX = true; // false = hide the hitbox
+const SHOW_HITBOX = true;        // false = hide the hitbox
+const HITBOX_MAGNIFICATION = 0.5; // 1 = full camera view; lower = smaller box / less area covered
 const hitbox = new THREE.Mesh(
   new THREE.PlaneGeometry(1, 1),
-  new THREE.MeshBasicMaterial({ color: 0x808080, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false })
+  // depthTest off + high renderOrder: always drawn on top of everything (temporary debug visual)
+  new THREE.MeshBasicMaterial({ color: 0x808080, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false, depthTest: false })
 );
+hitbox.renderOrder = 999;
 hitbox.visible = false;
 hitbox.raycast = () => {}; // don't let the pinch raycast hit its own hitbox
 scene.add(hitbox);
-const halfH = camera.position.z * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)); // world half-height at z=0
+const halfH = camera.position.z * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * HITBOX_MAGNIFICATION; // world half-height at z=0
 const halfW = halfH * camera.aspect;
 // ==============================================================================
 
