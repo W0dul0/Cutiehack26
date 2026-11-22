@@ -149,6 +149,7 @@ section {
 }
 
 #hide-button,
+#hitbox-button,
 #connect-button {
   background: #8b5cf6;
   color: white;

@@ -1,32 +1,32 @@
-// Is the hand hitbox touching Alice? And pinch-to-lift while it is.
+// Is the hand hitbox touching Alice's hitbox bubble? And pinch-to-lift while it is.
 import { THREE } from "./libs.js";
 
 export function createPickup(camera, modelRoot) {
   let character = null;
-  let characterBox = null; // Alice's bounds inside modelRoot
+  let characterSphere = null; // Alice's hitbox bubble, inside modelRoot
   let liftAmount = 0;
   let isHolding = false;
-  const corner = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  const tanHalfFov = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
 
   return {
     setTarget(target) {
-      ({ character, characterBox, liftAmount } = target);
+      ({ character, characterSphere, liftAmount } = target);
     },
 
-    // True when the hand square (front-view coords -1..1) overlaps Alice as seen from the front camera.
-    // Projects the 8 corners of her box to the screen, so it follows spin, tilt and zoom.
+    // True when the hand square (front-view coords -1..1) overlaps Alice's bubble as seen from the front camera.
+    // Follows spin, tilt and zoom because the bubble lives inside modelRoot.
     touches(square) {
-      if (!square || !characterBox) return false;
-      let x1 = Infinity, x2 = -Infinity, y1 = Infinity, y2 = -Infinity;
-      const { min, max } = characterBox;
-      for (let i = 0; i < 8; i++) {
-        corner.set(i & 1 ? max.x : min.x, i & 2 ? max.y : min.y, i & 4 ? max.z : min.z)
-          .applyMatrix4(modelRoot.matrixWorld)
-          .project(camera);
-        if (corner.x < x1) x1 = corner.x; if (corner.x > x2) x2 = corner.x;
-        if (corner.y < y1) y1 = corner.y; if (corner.y > y2) y2 = corner.y;
-      }
-      return x1 <= square.x2 && x2 >= square.x1 && y1 <= square.y2 && y2 >= square.y1;
+      if (!square || !characterSphere) return false;
+      center.copy(characterSphere.center).applyMatrix4(modelRoot.matrixWorld);
+      const radiusY = characterSphere.radius / (center.distanceTo(camera.position) * tanHalfFov); // on-screen radius
+      const radiusX = radiusY / camera.aspect;
+      center.project(camera);
+
+      // Closest point of the square to the bubble's center, then "is it inside the bubble?"
+      const dx = (center.x - THREE.MathUtils.clamp(center.x, square.x1, square.x2)) / radiusX;
+      const dy = (center.y - THREE.MathUtils.clamp(center.y, square.y1, square.y2)) / radiusY;
+      return dx * dx + dy * dy <= 1;
     },
 
     // Lift Alice. Returns true only on the pinch that picked her up.

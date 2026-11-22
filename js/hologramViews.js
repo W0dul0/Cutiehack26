@@ -16,6 +16,7 @@ const VIEWS = [
 // Front camera: matches the bottom view. Pinch raycasts and the hand overlay aim through it.
 export const frontCamera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 100);
 const viewCamera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 100); // reused for all 4 views
+const hudCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, -1, 1); // flat overlays: -1..1 = a view's edges
 const origin = new THREE.Vector3();
 const lightOffset = new THREE.Vector3(...LIGHT_OFFSET);
 let distance = START_DISTANCE;
@@ -62,7 +63,8 @@ export function createHologram(container, scene, light) {
       }
     },
 
-    render() {
+    // hudScene (optional): flat overlay drawn on top of every view, e.g. the blue touch-area border
+    render(hudScene) {
       scene.updateMatrixWorld(); // once for all 4 views
       renderer.setScissor(0, 0, size, size);
       renderer.clear();
@@ -81,6 +83,7 @@ export function createHologram(container, scene, light) {
         renderer.setViewport(v.x, v.y, viewSize, viewSize);
         renderer.setScissor(v.x, v.y, viewSize, viewSize);
         renderer.render(scene, viewCamera);
+        if (hudScene) renderer.render(hudScene, hudCamera);
       }
     },
   };

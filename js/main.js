@@ -53,7 +53,10 @@ window.hitState = hitState;
 window.connectEncoders = () => connectEncoders(applyControl);
 
 bindKeyboard();
-initDebugPanel();
+initDebugPanel({
+  hitboxesShown: overlay.hitboxesShown,
+  onToggleHitboxes: (shown) => overlay.setHitboxesShown(shown),
+});
 connectEncoders(applyControl, { askUser: false }); // reconnect an already-allowed ESP32 without a click
 
 // ---------- One loop for everything ----------
@@ -82,8 +85,8 @@ hologram.renderer.setAnimationLoop(() => {
     emit("alicehit", { isHittingAlice: hitting });
   }
 
-  overlay.update(dt, view.distance, square);
-  hologram.render();
+  overlay.update(dt, view.distance, square, hitting);
+  hologram.render(overlay.hudScene);
 });
 
 // ---------- Load the model and start the webcam at the same time ----------
@@ -91,6 +94,7 @@ loadModel(modelRoot)
   .then((loaded) => {
     mixer = loaded.mixer;
     pickup.setTarget(loaded);
+    overlay.showAliceBubble(modelRoot, loaded.characterSphere);
 
     // Place the camera so the model fills each view (MODEL_FILL in config.js sets how much)
     const fitDistance = loaded.radius / Math.sin(THREE.MathUtils.degToRad(FOV / 2)) / MODEL_FILL;

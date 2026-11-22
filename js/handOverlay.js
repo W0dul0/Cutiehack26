@@ -1,9 +1,9 @@
-// The hand hitbox: a grey see-through square around thumb + index finger, shown in the front view.
+// Hitbox visuals in the front view: the hand's grey square and Alice's red bubble.
 import { THREE } from "./libs.js";
 import { HUD_LAYER } from "./hologramViews.js";
 import {
-  SHOW_HAND_BOX, HAND_BOX_MAGNIFICATION, HAND_BOX_GROW, HAND_BOX_OPACITY,
-  OVERLAY_FADE, START_DISTANCE,
+  SHOW_HITBOXES, HAND_BOX_MAGNIFICATION, HAND_BOX_GROW, HAND_BOX_OPACITY,
+  OVERLAY_FADE, BORDER_IDLE_OPACITY, BORDER_ACTIVE_OPACITY,
 } from "./config.js";
 
 // Hand landmarks -> hitbox square in front-view coords (-1..1, y up, mirrored like the webcam).
@@ -24,14 +24,22 @@ export function handSquare(hand) {
 export function createHandOverlay(scene, camera) {
   const ignoreRaycast = () => {};
 
-  // Cyan outline around the front view; fades in while a hand is tracked
+  // Blue "touch area" border: outlines everywhere the hand hitbox can reach.
+  // Lives in its own flat HUD scene (coords -1..1 = the edges of a view), drawn on top of ALL 4 views.
+  // Dim while no hand is seen, bright while one is.
+  const hudScene = new THREE.Scene();
+  const edge = HAND_BOX_MAGNIFICATION * 0.98; // hand reach, nudged inside so the line isn't cut off at the view edge
   const borderMat = new THREE.LineBasicMaterial({
-    color: 0x00ffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthTest: false,
+    color: 0x00ffff, transparent: true, opacity: BORDER_IDLE_OPACITY, depthTest: false,
   });
-  const border = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(7.2, 7.2)), borderMat);
-  border.layers.set(HUD_LAYER);
-  border.raycast = ignoreRaycast;
-  scene.add(border);
+  const border = new THREE.LineLoop(
+    new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-edge, -edge, 0), new THREE.Vector3(edge, -edge, 0),
+      new THREE.Vector3(edge, edge, 0), new THREE.Vector3(-edge, edge, 0),
+    ]),
+    borderMat
+  );
+  hudScene.add(border);
 
   // The hitbox square: grey, see-through, drawn on top of everything, front view only
   const handBox = new THREE.Mesh(
@@ -47,17 +55,49 @@ export function createHandOverlay(scene, camera) {
   handBox.raycast = ignoreRaycast;
   scene.add(handBox);
 
+  // Alice's hitbox: see-through red bubble, brighter while the hand is hitting it
+  const bubbleMat = new THREE.MeshBasicMaterial({
+    color: 0xff0000, transparent: true, opacity: 0.2, depthWrite: false, depthTest: false,
+  });
+  let bubble = null;
+
   const tanHalfFov = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  let showHitboxes = SHOW_HITBOXES;
 
   return {
-    // Call every frame. square = handSquare(...) or null when no hand.
-    update(dt, distance, square) {
-      const k = distance / START_DISTANCE; // border was sized for START_DISTANCE
-      border.scale.setScalar(k);
-      border.position.z = 4 * k;
-      borderMat.opacity = THREE.MathUtils.damp(borderMat.opacity, square ? 0.85 : 0, OVERLAY_FADE, dt);
+    hudScene, // pass to hologram.render() so the border appears on every view
 
-      handBox.visible = SHOW_HAND_BOX && !!square;
+    get hitboxesShown() {
+      return showHitboxes;
+    },
+
+    // Show/hide the grey square and the red bubble (hit detection keeps working either way)
+    setHitboxesShown(shown) {
+      showHitboxes = shown;
+      if (bubble) bubble.visible = shown;
+    },
+
+    // Put the red bubble on Alice. parent = modelRoot, so it spins/tilts with her.
+    showAliceBubble(parent, sphere) {
+      bubble = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), bubbleMat);
+      bubble.position.copy(sphere.center);
+      bubble.scale.setScalar(sphere.radius);
+      bubble.renderOrder = 998;
+      bubble.layers.set(HUD_LAYER);
+      bubble.raycast = ignoreRaycast;
+      bubble.visible = showHitboxes;
+      parent.add(bubble);
+    },
+
+    // Call every frame. square = handSquare(...) or null when no hand.
+    update(dt, distance, square, isHittingAlice) {
+      bubbleMat.opacity = isHittingAlice ? 0.45 : 0.2;
+
+      borderMat.opacity = THREE.MathUtils.damp(
+        borderMat.opacity, square ? BORDER_ACTIVE_OPACITY : BORDER_IDLE_OPACITY, OVERLAY_FADE, dt
+      );
+
+      handBox.visible = showHitboxes && !!square;
       if (!handBox.visible) return;
       // Front-view coords -> world units on the z=0 plane the front camera looks at
       const unitH = distance * tanHalfFov, unitW = unitH * camera.aspect;

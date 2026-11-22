@@ -1,6 +1,6 @@
 // Loads the GLB once, centers it, and finds Alice (what the hand hitbox can hit and pick up).
 import { THREE, GLTFLoader } from "./libs.js";
-import { MODEL_URL, MODEL_SCALE, CHARACTER_NAME, PICKUP_LIFT } from "./config.js";
+import { MODEL_URL, MODEL_SCALE, CHARACTER_NAME, PICKUP_LIFT, ALICE_BUBBLE_SCALE } from "./config.js";
 
 export async function loadModel(parent) {
   const gltf = await new GLTFLoader().loadAsync(MODEL_URL);
@@ -23,10 +23,16 @@ export async function loadModel(parent) {
   // Alice: her bounds (inside `parent`, so they follow its spin/tilt) are what the hand hitbox is tested against
   const character = findCharacter(model);
   const characterBox = new THREE.Box3().setFromObject(character).applyMatrix4(parent.matrixWorld.clone().invert());
-  const height = characterBox.getSize(new THREE.Vector3()).y;
-  const liftAmount = (height * PICKUP_LIFT) / character.parent.getWorldScale(new THREE.Vector3()).y; // in her own units
+  const size = characterBox.getSize(new THREE.Vector3());
+  const liftAmount = (size.y * PICKUP_LIFT) / character.parent.getWorldScale(new THREE.Vector3()).y; // in her own units
 
-  return { model, mixer, radius, character, characterBox, liftAmount };
+  // Her hitbox: a sphere (the red bubble) around her, sized to her tallest side
+  const characterSphere = new THREE.Sphere(
+    characterBox.getCenter(new THREE.Vector3()),
+    (Math.max(size.x, size.y, size.z) / 2) * ALICE_BUBBLE_SCALE
+  );
+
+  return { model, mixer, radius, character, characterSphere, liftAmount };
 }
 
 // First node whose name starts with CHARACTER_NAME (the loader strips "." from names: "alice_anime.glb" -> "alice_animeglb")

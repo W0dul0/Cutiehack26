@@ -1,5 +1,18 @@
 // Debug panel buttons and status text.
-export function initDebugPanel() {
+export function initDebugPanel({ hitboxesShown, onToggleHitboxes }) {
+  // Hide/Show Hitboxes: the grey hand square and Alice's red bubble
+  const hitboxButton = document.getElementById("hitbox-button");
+  let shown = hitboxesShown;
+  const labelHitboxButton = () => {
+    if (hitboxButton) hitboxButton.textContent = shown ? "Hide Hitboxes" : "Show Hitboxes";
+  };
+  labelHitboxButton();
+  hitboxButton?.addEventListener("click", () => {
+    shown = !shown;
+    onToggleHitboxes(shown);
+    labelHitboxButton();
+  });
+
   // Hide/Show: fade the webcam out and back in
   const hideButton = document.getElementById("hide-button");
   const webcam = document.getElementById("webcam");

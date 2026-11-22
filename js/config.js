@@ -36,11 +36,14 @@ export const PINCH_SENSITIVITY_Y = 2.0;
 
 // ---- Hand overlay (front view) ----
 // The grey square around thumb 2-4 + index 5-8 IS the hitbox: whatever it covers, the hand is hitting.
-export const SHOW_HAND_BOX = true;         // draw the grey square (false = hide it; hits still work)
+export const SHOW_HITBOXES = true;         // start with the grey square + Alice's red bubble shown (button toggles it)
 export const HAND_BOX_MAGNIFICATION = 1.0; // how much of the front view the hand can reach (1 = all of it)
-export const HAND_BOX_GROW = 1.6;          // square size vs. the fingers it covers (higher = bigger hitbox)
+export const HAND_BOX_GROW = 1.3;          // square size vs. the fingers it covers (higher = bigger hitbox)
+export const ALICE_BUBBLE_SCALE = 1.0;     // Alice's red hitbox bubble: 1 = just covers her height
 export const HAND_BOX_OPACITY = 0.5;       // 0 = invisible, 1 = solid grey
-export const OVERLAY_FADE = 13;            // how fast the front-view border fades in and out
+export const OVERLAY_FADE = 13;            // how fast the blue border brightens/dims
+export const BORDER_IDLE_OPACITY = 0.25;   // blue "touch area" border while no hand is seen
+export const BORDER_ACTIVE_OPACITY = 0.9;  // ...and while a hand is tracked
 
 // ---- ESP32 encoders ----
 export const SERIAL_BAUD = 115200;
