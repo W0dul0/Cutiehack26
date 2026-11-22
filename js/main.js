@@ -1,6 +1,6 @@
 import * as THREE from "https://esm.sh/three@0.160.0";
-import { HandLandmarker, FilesetResolver } from "https://esm.sh/@mediapipe/tasks-vision@0.10.9";
 import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
+import { HandLandmarker, FilesetResolver } from "https://esm.sh/@mediapipe/tasks-vision@0.10.9";
 
 const container = document.getElementById("Three.js");
 if (!container) {
@@ -8,25 +8,23 @@ if (!container) {
 }
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x000000); // pure black = invisible on the pyramid
+scene.background = new THREE.Color(0x000000);
 
 // ===================== PEPPER'S GHOST (4 scissored views) =====================
-const VIEW_RATIO = 0.33;     // each view's side as a fraction of the square canvas
-const CENTER_GAP = 0;        // px each view is pushed outward from the center
-let ORBIT_RADIUS = 20;       // camera distance from the model (recomputed from the model's size once it loads)
-const CAMERA_DISTANCE = 1.0; // 1 = closest the camera can get with no clipping while the model spins; lower = closer (may clip)
-const TURNTABLE_SPEED = 0.4; // radians/sec the model spins on its own (0 = off)
+const VIEW_RATIO = 0.33;
+const CENTER_GAP = 0;
+let orbitRadius = 20;
+let targetOrbitRadius = 20;
+const MIN_ZOOM = 10;
+const MAX_ZOOM = 32;
+const TURNTABLE_SPEED = 0;
 
-// `camera` is the FRONT view camera. The pinch raycast and the hitbox use it, so
-// pinch coordinates (-1..1) map onto the bottom (front) view.
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-camera.position.set(0, 0, ORBIT_RADIUS);
+camera.position.set(0, 0, orbitRadius);
 
-// `viewCamera` is reused to draw all four views.
 const viewCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
 const target = new THREE.Vector3(0, 0, 0);
 
-// angle = camera azimuth around Y (0 = +Z, the front); roll makes the model's top point at the center.
 const VIEWS = [
   { slot: "bottom", angle: 0,            roll: 0,            front: true },
   { slot: "right",  angle: Math.PI / 2,  roll: -Math.PI / 2 },
@@ -34,36 +32,42 @@ const VIEWS = [
   { slot: "left",   angle: -Math.PI / 2, roll: Math.PI / 2 },
 ];
 
-const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
-scene.add(ambientLight);
+scene.add(new THREE.AmbientLight(0xffffff, 1.3));
 const dirLight = new THREE.DirectionalLight(0xffffff, 2);
-dirLight.position.set(3, 5, 4);
+const LIGHT_OFFSET = new THREE.Vector3(3, 5, 4);
+dirLight.position.copy(LIGHT_OFFSET);
 scene.add(dirLight);
 
-let sceneMesh = null;
+const dioramaGroup = new THREE.Group();
+scene.add(dioramaGroup);
 
-const renderer = new THREE.WebGLRenderer({ antialias: false });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.autoClear = false;     // cleared manually once per frame
-renderer.setScissorTest(true);  // each view only draws inside its own rectangle
-renderer.domElement.style.display = "block"; // removes the inline-canvas gap that makes the container grow/shift
+let targetRotX = 0;
+let targetRotY = 0;
+let sceneMesh = null;
+let targetCharacter = null;
+let characterHitbox = null;
+let mixer = null;
+let isPickedUp = false;
+
+// DPR 1 is plenty sharp for glass reflection and renders 4x faster on Retina screens
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+renderer.setPixelRatio(1);
+renderer.autoClear = false;
+renderer.setScissorTest(true);
+renderer.domElement.style.display = "block";
 container.appendChild(renderer.domElement);
 
 let canvasW = 0, canvasH = 0;
 function resize() {
-  // Use the container's size, but fall back to a square if it has no real height yet
-  let w = container.clientWidth || 980;
-  let h = container.clientHeight;
-  if (!h || h < 50) h = w;
-  canvasW = w;
-  canvasH = h;
+  const size = Math.min(container.clientWidth || 660, container.clientHeight || 660);
+  canvasW = size;
+  canvasH = size;
   renderer.setSize(canvasW, canvasH);
 }
 resize();
 window.addEventListener("resize", resize);
 new ResizeObserver(resize).observe(container);
 
-// WebGL viewport origin is the bottom-left corner
 function slotRect(slot) {
   const size = Math.min(canvasW, canvasH);
   const s = Math.floor(size * VIEW_RATIO);
@@ -73,10 +77,10 @@ function slotRect(slot) {
   const cy = oy + Math.floor((size - s) / 2);
   const g = CENTER_GAP;
   switch (slot) {
-    case "bottom": return { x: cx,            y: oy + g,            s };
-    case "top":    return { x: cx,            y: oy + size - s - g, s };
-    case "left":   return { x: ox + g,        y: cy,                s };
-    case "right":  return { x: ox + size - s - g, y: cy,            s };
+    case "bottom": return { x: cx,               y: oy + g,            s };
+    case "top":    return { x: cx,               y: oy + size - s - g, s };
+    case "left":   return { x: ox + g,           y: cy,                s };
+    case "right":  return { x: ox + size - s - g, y: cy,               s };
   }
 }
 
@@ -90,16 +94,18 @@ function renderViews() {
     const r = slotRect(v.slot);
 
     viewCamera.position.set(
-      target.x + Math.sin(v.angle) * ORBIT_RADIUS,
+      target.x + Math.sin(v.angle) * orbitRadius,
       target.y,
-      target.z + Math.cos(v.angle) * ORBIT_RADIUS
+      target.z + Math.cos(v.angle) * orbitRadius
     );
     viewCamera.up.set(0, 1, 0);
     viewCamera.lookAt(target);
     viewCamera.rotateZ(v.roll);
 
-    // The hitbox lives on layer 1 and is only drawn in the front view
-    if (v.front) viewCamera.layers.enable(1); else viewCamera.layers.disable(1);
+    dirLight.position.copy(viewCamera.position).add(LIGHT_OFFSET);
+
+    if (v.front) viewCamera.layers.enable(1);
+    else viewCamera.layers.disable(1);
 
     renderer.setViewport(r.x, r.y, r.s, r.s);
     renderer.setScissor(r.x, r.y, r.s, r.s);
@@ -108,166 +114,364 @@ function renderViews() {
 }
 // ==============================================================================
 
-// The turntable spins this pivot; the model sits inside it, centered on the origin
-const modelPivot = new THREE.Group();
-scene.add(modelPivot);
+// ===================== LAYER 1 FRONT HUD BORDER & 3D CURSOR ===================
+const borderMat = new THREE.MeshBasicMaterial({
+  color: 0x00ffff,
+  transparent: true,
+  opacity: 0,
+  blending: THREE.AdditiveBlending,
+  depthTest: false,
+});
+const frontBorderUI = new THREE.LineSegments(
+  new THREE.EdgesGeometry(new THREE.PlaneGeometry(7.2, 7.2)),
+  borderMat
+);
+frontBorderUI.position.set(0, 0, 4);
+frontBorderUI.layers.set(1);
+frontBorderUI.raycast = () => {};
+scene.add(frontBorderUI);
 
-try {
-  const gltfLoader = new GLTFLoader();
-  const gltf = await gltfLoader.loadAsync("/assets/scene.glb");
+const cursorMat = new THREE.MeshBasicMaterial({
+  color: 0x00ffff,
+  transparent: true,
+  opacity: 0,
+  side: THREE.DoubleSide,
+  blending: THREE.AdditiveBlending,
+  depthTest: false,
+});
+const cursorMesh = new THREE.Mesh(new THREE.RingGeometry(0.28, 0.42, 32), cursorMat);
+cursorMesh.renderOrder = 1000;
+cursorMesh.raycast = () => {};
+scene.add(cursorMesh);
 
-  sceneMesh = gltf.scene;
-  sceneMesh.scale.set(0.1, 0.1, 0.1);
-  sceneMesh.position.set(0, 0, 0);
+const trackingPlane = new THREE.Mesh(
+  new THREE.PlaneGeometry(40, 40),
+  new THREE.MeshBasicMaterial({ visible: false })
+);
+scene.add(trackingPlane);
 
-  // Center the model on the origin so it spins in place instead of swinging out of the views
-  const sphere = new THREE.Box3().setFromObject(sceneMesh).getBoundingSphere(new THREE.Sphere());
-  sceneMesh.position.sub(sphere.center);
-  modelPivot.add(sceneMesh);
+const SHOW_HITBOX = true;
+const HITBOX_MAGNIFICATION = 0.5;
+const hitbox = new THREE.Mesh(
+  new THREE.PlaneGeometry(1, 1),
+  new THREE.MeshBasicMaterial({
+    color: 0x808080,
+    transparent: true,
+    opacity: 0.35,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    depthTest: false,
+  })
+);
+hitbox.renderOrder = 999;
+hitbox.visible = false;
+hitbox.layers.set(1);
+hitbox.raycast = () => {};
+scene.add(hitbox);
 
-  // Move the cameras as close as possible while the whole spinning model still fits each view
-  ORBIT_RADIUS = sphere.radius / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2)) * CAMERA_DISTANCE;
-  camera.position.set(0, 0, ORBIT_RADIUS);
-  for (const cam of [camera, viewCamera]) {
-    cam.near = ORBIT_RADIUS / 100;
-    cam.far = ORBIT_RADIUS + sphere.radius * 2;
-    cam.updateProjectionMatrix();
+function getProjectionBounds() {
+  const halfH = orbitRadius * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * HITBOX_MAGNIFICATION;
+  const halfW = halfH * camera.aspect;
+  return { halfW, halfH };
+}
+// ==============================================================================
+
+// ===================== SERIAL & ENCODER TRANSFORMS ============================
+const ROTATE_STEP = 0.12;
+const ZOOM_STEP = 0.8;
+
+function handleEncoderAction(encoderId, action, amount) {
+  switch (action) {
+    case "RIGHT":
+      targetRotY += amount * ROTATE_STEP;
+      break;
+    case "LEFT":
+      targetRotY -= amount * ROTATE_STEP;
+      break;
+    case "UP":
+      targetRotX = THREE.MathUtils.clamp(targetRotX - amount * ROTATE_STEP, -0.85, 0.85);
+      break;
+    case "DOWN":
+      targetRotX = THREE.MathUtils.clamp(targetRotX + amount * ROTATE_STEP, -0.85, 0.85);
+      break;
+    case "ZOOM_IN":
+      targetOrbitRadius = THREE.MathUtils.clamp(targetOrbitRadius - amount * ZOOM_STEP, MIN_ZOOM, MAX_ZOOM);
+      break;
+    case "ZOOM_OUT":
+      targetOrbitRadius = THREE.MathUtils.clamp(targetOrbitRadius + amount * ZOOM_STEP, MIN_ZOOM, MAX_ZOOM);
+      break;
   }
-  console.log("Loaded GLB:", sceneMesh);
-} catch (err) {
-  console.error("Failed to load GLTF model:", err);
+
+  window.dispatchEvent(
+    new CustomEvent("encoderinput", { detail: { encoderId, action, amount } })
+  );
 }
 
+window.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowRight") handleEncoderAction("E1", "RIGHT", 1);
+  if (e.key === "ArrowLeft")  handleEncoderAction("E1", "LEFT", 1);
+  if (e.key === "ArrowUp")    handleEncoderAction("E2", "UP", 1);
+  if (e.key === "ArrowDown")  handleEncoderAction("E2", "DOWN", 1);
+  if (e.key.toLowerCase() === "w") handleEncoderAction("E3", "ZOOM_IN", 1);
+  if (e.key.toLowerCase() === "s") handleEncoderAction("E3", "ZOOM_OUT", 1);
+});
+
+window.connectEncoders = async function () {
+  if (!("serial" in navigator)) {
+    alert("Web Serial API is not supported in this browser. Use Chrome or Edge.");
+    return;
+  }
+
+  try {
+    const port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    await port.setSignals({ dataTerminalReady: false, requestToSend: false });
+
+    const decoder = new TextDecoderStream();
+    port.readable.pipeTo(decoder.writable);
+    const reader = decoder.readable.getReader();
+
+    window.dispatchEvent(new CustomEvent("serialconnected"));
+
+    let buffer = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+
+      buffer += value;
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop();
+
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line || line === "READY") continue;
+
+        const parts = line.split(",");
+        if (parts.length === 3) {
+          const encoderId = parts[0].trim();
+          const action = parts[1].trim().toUpperCase();
+          const amount = parseInt(parts[2].trim(), 10);
+          if (!Number.isNaN(amount)) {
+            handleEncoderAction(encoderId, action, amount);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Serial connection error:", err);
+  }
+};
+// ==============================================================================
+
+// Start render loop immediately (no blocking awaits!)
 const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
-  if (sceneMesh && TURNTABLE_SPEED) modelPivot.rotation.y += TURNTABLE_SPEED * dt;
+
+  if (mixer) mixer.update(dt);
+  if (TURNTABLE_SPEED) targetRotY += TURNTABLE_SPEED * dt;
+
+  dioramaGroup.rotation.y = THREE.MathUtils.lerp(dioramaGroup.rotation.y, targetRotY, 0.2);
+  dioramaGroup.rotation.x = THREE.MathUtils.lerp(dioramaGroup.rotation.x, targetRotX, 0.2);
+  orbitRadius = THREE.MathUtils.lerp(orbitRadius, targetOrbitRadius, 0.2);
+  camera.position.z = orbitRadius;
+
   renderViews();
 }
 animate();
 
-// MediaPipe Engine
-const vision = await FilesetResolver.forVisionTasks(
-  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/wasm"
+// ===================== PINCH & RAYCAST LOGIC ==================================
+const raycaster = new THREE.Raycaster();
+const WRIST_HEIGHT_CUTOFF = 0.78;
+const SENSITIVITY_X = 2.2;
+const SENSITIVITY_Y = 2.0;
+
+const pinchState = {
+  isPinching: false,
+  point: null,
+  distance: 0,
+  count: 0,
+  holdFrames: 0,
+};
+window.pinch = pinchState;
+
+const castFromPinch = (point) => {
+  if (!point) return null;
+  camera.position.z = orbitRadius;
+  camera.updateMatrixWorld();
+  raycaster.setFromCamera(new THREE.Vector2(point.x, point.y), camera);
+
+  const targets = characterHitbox ? [characterHitbox] : scene.children;
+  const h = raycaster.intersectObjects(targets, true)[0];
+  return h ? { object: h.object, name: h.object.name, point: h.point, distance: h.distance } : null;
+};
+window.castFromPinch = () => castFromPinch(pinchState.point);
+function handlePinchStart(point) {
+const hit = castFromPinch(point);
+cursorMat.color.setHex(0xff00ff);
+cursorMesh.scale.set(1.35, 1.35, 1.35);
+window.dispatchEvent(
+new CustomEvent("pinchstart", { detail: { point, hit, count: pinchState.count } })
 );
-
-const handLandmarker = await HandLandmarker.createFromOptions(vision, {
-  baseOptions: {
-    modelAssetPath:
-      "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-    delegate: "GPU",
-  },
-  runningMode: "VIDEO",
-  numHands: 1,
-});
-
-const video = document.getElementById("webcam");
-if (video && navigator.mediaDevices?.getUserMedia) {
-  video.srcObject = await navigator.mediaDevices.getUserMedia({ video: true });
-  await video.play();
+if (hit && !isPickedUp) {
+isPickedUp = true;
+if (targetCharacter) targetCharacter.position.y += 1.5;
+window.dispatchEvent(new CustomEvent("characterfound", { detail: { hit } }));
 }
-
-// ===================== PINCH (index finger + thumb) =====================
-// Full notes at the top of pinch.js. Short version:
-//   window.pinch.value      0-100 (0 = touching, null = no hand)    window.pinch.connected  true/false
-//   window.pinch.count      pinches since load                      window.pinch.point      {x,y} -1..1
-//   window.pinch.hit        what the pinch touches in the 3D scene (null = nothing)
-//   window.castFromPinch()  re-run the raycast on demand (e.g. every frame while dragging)
-//   Events (fire once each):  "pinchstart" / "pinchend"   e.detail = { value, count, point, hit }
-//   hit = { object, name, point, distance, uv, face } from a Three.js raycast, or null
-//     window.addEventListener("pinchstart", (e) => { if (e.detail.hit) console.log(e.detail.hit.name); });
-// With four views, pinch coordinates map onto the FRONT (bottom) view.
-// Everything here sits in ONE try/catch, so if pinch.js is missing or broken the rest of the app still runs.
-let pinchDetector = null;
-try {
-  const { createPinchDetector } = await import("./pinch.js");
-  const raycaster = new THREE.Raycaster();
-
-  // Ray from the front camera through the pinch point. Never throws: any problem just means "no hit".
-  const castFromPinch = (point) => {
-    try {
-      if (!point) return null;
-      camera.updateMatrixWorld();
-      raycaster.setFromCamera(new THREE.Vector2(point.x, point.y), camera);
-      const h = raycaster.intersectObjects(scene.children, true)[0];
-      return h ? { object: h.object, name: h.object.name, point: h.point, distance: h.distance, uv: h.uv, face: h.face } : null;
-    } catch (err) {
-      console.error("Pinch raycast failed:", err);
-      return null;
-    }
-  };
-
-  // Raycast only on pinchstart/pinchend (not every frame) so a heavy model can't slow rendering.
-  const emit = (name) => (s) => {
-    s.hit = castFromPinch(s.point);
-    window.dispatchEvent(new CustomEvent(name, { detail: { value: s.value, count: s.count, point: s.point, hit: s.hit } }));
-  };
-
-  pinchDetector = createPinchDetector({
-    connectBelow: 25,   // pinch starts at or below this value
-    releaseAbove: 35,   // pinch ends at or above this value
-    onStart: emit("pinchstart"),
-    onEnd: emit("pinchend"),
-  });
-  window.pinch = pinchDetector.state;
-  window.castFromPinch = () => castFromPinch(pinchDetector.state.point);
-} catch (err) {
-  console.error("Pinch detection unavailable (rest of app unaffected):", err);
 }
-// ========================================================================
-
-// ===================== HITBOX (grey cast of the pinch area) =====================
-// Grey 50% plane at the model's depth (z=0), in the same mirrored -1..1 screen space the
-// pinch raycast uses. Covers thumb 2-4 + index 5-8 so it stays a rough rectangle even
-// when tips 4 and 8 share the same X or Y. Drawn in the front (bottom) view only.
-const SHOW_HITBOX = true;        // false = hide the hitbox
-const HITBOX_MAGNIFICATION = 0.5; // 1 = full front-view area; lower = smaller box / less area covered
-const hitbox = new THREE.Mesh(
-  new THREE.PlaneGeometry(1, 1),
-  // depthTest off + high renderOrder: always drawn on top of everything (temporary debug visual)
-  new THREE.MeshBasicMaterial({ color: 0x808080, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false, depthTest: false })
+function handlePinchEnd(point) {
+cursorMat.color.setHex(0x00ffff);
+cursorMesh.scale.set(1, 1, 1);
+window.dispatchEvent(
+new CustomEvent("pinchend", { detail: { point, count: pinchState.count } })
 );
-hitbox.renderOrder = 999;
-hitbox.visible = false;
-hitbox.layers.set(1);      // only the front view camera renders layer 1
-hitbox.raycast = () => {}; // don't let the pinch raycast hit its own hitbox
-scene.add(hitbox);
-const halfH = camera.position.z * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * HITBOX_MAGNIFICATION; // world half-height at z=0
-const halfW = halfH * camera.aspect;
+if (isPickedUp && targetCharacter) {
+targetCharacter.position.y -= 1.5;
+isPickedUp = false;
+}
+}
+function updatePinch(hand) {
+if (!hand) {
+pinchState.point = null;
+if (pinchState.isPinching) {
+pinchState.isPinching = false;
+handlePinchEnd(null);
+}
+pinchState.holdFrames = 0;
+return;
+}
+const thumb = hand[4];
+const index = hand[8];
+const midX = (thumb.x + index.x) / 2;
+const midY = (thumb.y + index.y) / 2;
+pinchState.point = {
+x: THREE.MathUtils.clamp(((1 - midX) * 2 - 1) * SENSITIVITY_X, -1, 1),
+y: THREE.MathUtils.clamp((1 - midY * 2) * SENSITIVITY_Y, -1, 1),
+};
+const dist = Math.hypot(thumb.x - index.x, thumb.y - index.y);
+pinchState.distance = dist;
+if (dist < 0.045) {
+pinchState.holdFrames++;
+if (pinchState.holdFrames === 4 && !pinchState.isPinching) {
+pinchState.isPinching = true;
+pinchState.count++;
+handlePinchStart(pinchState.point);
+}
+} else {
+pinchState.holdFrames = 0;
+if (pinchState.isPinching) {
+pinchState.isPinching = false;
+handlePinchEnd(pinchState.point);
+}
+}
+}
 // ==============================================================================
-
-let lastVideoTime = -1;
-
-function renderLoop() {
-  if (video && video.readyState >= 2 && video.currentTime !== lastVideoTime) {
-    lastVideoTime = video.currentTime;
-    const result = handLandmarker.detectForVideo(video, performance.now());
-    console.log(result.landmarks, result.handedness);
-
-    if (pinchDetector) {   // feed each new frame to the pinch detector (errors are contained)
-      try {
-        const aspect = video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 1;
-        pinchDetector.update(result.landmarks?.[0], aspect);
-      } catch (err) {
-        console.error("Pinch update failed:", err);
-      }
-    }
-
-    // Hitbox follows the hand whenever the pinch detector sees one
-    const hand = result.landmarks?.[0];
-    hitbox.visible = SHOW_HITBOX && !!pinchDetector?.state.point;
-    if (hitbox.visible) {
-      const pts = hand.slice(2, 9);
-      const xs = pts.map(p => (1 - p.x) * 2 - 1), ys = pts.map(p => 1 - p.y * 2);
-      const x1 = Math.min(...xs), x2 = Math.max(...xs), y1 = Math.min(...ys), y2 = Math.max(...ys);
-      hitbox.position.set((x1 + x2) / 2 * halfW, (y1 + y2) / 2 * halfH, 0);
-      hitbox.scale.set((x2 - x1) * halfW, (y2 - y1) * halfH, 1);
-    }
-  }
-  requestAnimationFrame(renderLoop);
+// ===================== PARALLEL ASYNC BOOTSTRAP ===============================
+// 1. Load GLB asynchronously without blocking UI or MediaPipe
+async function loadDiorama() {
+try {
+const gltfLoader = new GLTFLoader();
+const gltf = await gltfLoader.loadAsync("/assets/scene.glb");
+sceneMesh = gltf.scene;
+sceneMesh.scale.set(0.1, 0.1, 0.1);
+sceneMesh.position.set(0, 0, 0);
+dioramaGroup.add(sceneMesh);
+// Center the model on the origin so it rotates in place instead of swinging out of the views
+const sphere = new THREE.Box3().setFromObject(sceneMesh).getBoundingSphere(new THREE.Sphere());
+sceneMesh.position.sub(sphere.center);
+for (const cam of [camera, viewCamera]) {
+cam.far = MAX_ZOOM + sphere.radius * 2; // never cut off the back of the model, even fully zoomed out
+cam.updateProjectionMatrix();
 }
-renderLoop();
-
-console.log(THREE);
-console.log(scene);
+if (gltf.animations && gltf.animations.length > 0) {
+mixer = new THREE.AnimationMixer(sceneMesh);
+gltf.animations.forEach((clip) => mixer.clipAction(clip).play());
+}
+targetCharacter = sceneMesh.getObjectByName("character") || sceneMesh;
+const box = new THREE.Box3().setFromObject(targetCharacter);
+const center = box.getCenter(new THREE.Vector3());
+const size = box.getSize(new THREE.Vector3());
+const radius = Math.max(size.x, size.y, size.z, 1.5) * 0.85;
+characterHitbox = new THREE.Mesh(
+new THREE.SphereGeometry(radius, 16, 16),
+new THREE.MeshBasicMaterial({ color: 0xff00ff, wireframe: true, visible: false })
+);
+characterHitbox.position.copy(center);
+characterHitbox.name = "character_hitbox";
+dioramaGroup.add(characterHitbox);
+} catch (err) {
+console.error("Failed to load GLTF model:", err);
+}
+}
+// 2. Start webcam at fast 480p resolution & MediaPipe in parallel
+async function initHandTracking() {
+const video = document.getElementById("webcam");
+if (!video || !navigator.mediaDevices?.getUserMedia) return;
+const webcamPromise = navigator.mediaDevices
+.getUserMedia({
+video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+audio: false,
+})
+.then(async (stream) => {
+video.srcObject = stream;
+await video.play();
+});
+const landmarkerPromise = FilesetResolver.forVisionTasks(
+"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/wasm"
+).then((vision) =>
+HandLandmarker.createFromOptions(vision, {
+baseOptions: {
+modelAssetPath:
+"https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+delegate: "GPU",
+},
+runningMode: "VIDEO",
+numHands: 1,
+})
+);
+// Wait for both simultaneously instead of sequentially
+const [, handLandmarker] = await Promise.all([webcamPromise, landmarkerPromise]);
+let lastVideoTime = -1;
+function trackingLoop() {
+if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
+lastVideoTime = video.currentTime;
+const result = handLandmarker.detectForVideo(video, performance.now());
+const rawHand = result.landmarks?.[0];
+const handInAirspace = rawHand && rawHand[0].y <= WRIST_HEIGHT_CUTOFF ? rawHand : null;
+updatePinch(handInAirspace);
+const active = !!handInAirspace && !!pinchState.point;
+borderMat.opacity = THREE.MathUtils.lerp(borderMat.opacity, active ? 0.85 : 0, 0.2);
+cursorMat.opacity = THREE.MathUtils.lerp(cursorMat.opacity, active ? 1.0 : 0, 0.25);
+if (active) {
+camera.position.z = orbitRadius;
+camera.updateMatrixWorld();
+raycaster.setFromCamera(
+new THREE.Vector2(pinchState.point.x, pinchState.point.y),
+camera
+);
+const planeHit = raycaster.intersectObject(trackingPlane)[0];
+if (planeHit) {
+cursorMesh.position.lerp(planeHit.point, 0.25);
+}
+}
+hitbox.visible = SHOW_HITBOX && active;
+if (hitbox.visible) {
+const { halfW, halfH } = getProjectionBounds();
+const pts = handInAirspace.slice(2, 9);
+const xs = pts.map((p) => (1 - p.x) * 2 - 1);
+const ys = pts.map((p) => 1 - p.y * 2);
+const x1 = Math.min(...xs), x2 = Math.max(...xs);
+const y1 = Math.min(...ys), y2 = Math.max(...ys);
+hitbox.position.set(((x1 + x2) / 2) * halfW, ((y1 + y2) / 2) * halfH, 0);
+hitbox.scale.set((x2 - x1) * halfW, (y2 - y1) * halfH, 1);
+}
+}
+requestAnimationFrame(trackingLoop);
+}
+trackingLoop();
+}
+// Fire both pipelines at the exact same millisecond
+loadDiorama();
+initHandTracking();
