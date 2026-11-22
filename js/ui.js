@@ -33,4 +33,12 @@ export function initDebugPanel() {
   };
   window.addEventListener("serialconnected", () => showConnected(true));
   window.addEventListener("serialdisconnected", () => showConnected(false));
+
+  // "Hitting Alice" card: true (green) while the grey hand hitbox overlaps her
+  const aliceStatus = document.getElementById("alice-status");
+  window.addEventListener("alicehit", (e) => {
+    if (!aliceStatus) return;
+    aliceStatus.textContent = String(e.detail.isHittingAlice);
+    aliceStatus.classList.toggle("hit", e.detail.isHittingAlice);
+  });
 }

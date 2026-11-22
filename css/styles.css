@@ -172,6 +172,16 @@ section {
   color: #4ade80;
 }
 
+/* "Hitting Alice" card: red = false, green = true */
+#alice-status {
+  color: #ff6b6b;
+  font-weight: bold;
+}
+
+#alice-status.hit {
+  color: #4ade80;
+}
+
 @media (max-width: 700px) {
   main {
     grid-template-columns: 1fr;

@@ -3,8 +3,8 @@
 // ---- Model ----
 export const MODEL_URL = "/assets/scene.glb";
 export const MODEL_SCALE = 0.1;
-export const CHARACTER_NAME = "character"; // node the pinch can pick up (falls back to the whole model)
-export const PICKUP_LIFT = 1.5;            // how far the character rises while held
+export const CHARACTER_NAME = "alice_anime"; // Alice's node in scene.glb (matched by name prefix)
+export const PICKUP_LIFT = 0.3;              // how far Alice rises while held, as a fraction of her height
 
 // ---- Hologram layout (4 views, one per pyramid face) ----
 export const VIEW_SIZE = 0.33;   // each view's side as a fraction of the square canvas
@@ -35,10 +35,12 @@ export const PINCH_SENSITIVITY_X = 2.2;  // >1 = small hand moves cover the whol
 export const PINCH_SENSITIVITY_Y = 2.0;
 
 // ---- Hand overlay (front view) ----
-export const SHOW_HAND_BOX = true;        // grey box around thumb + index finger (false = off)
-export const HAND_BOX_MAGNIFICATION = 0.5; // 1 = full front view; lower = smaller box
-export const OVERLAY_FADE = 13;           // how fast the border/cursor fade in and out
-export const CURSOR_FOLLOW = 10;          // how fast the cursor follows the pinch point
+// The grey square around thumb 2-4 + index 5-8 IS the hitbox: whatever it covers, the hand is hitting.
+export const SHOW_HAND_BOX = true;         // draw the grey square (false = hide it; hits still work)
+export const HAND_BOX_MAGNIFICATION = 1.0; // how much of the front view the hand can reach (1 = all of it)
+export const HAND_BOX_GROW = 1.6;          // square size vs. the fingers it covers (higher = bigger hitbox)
+export const HAND_BOX_OPACITY = 0.5;       // 0 = invisible, 1 = solid grey
+export const OVERLAY_FADE = 13;            // how fast the front-view border fades in and out
 
 // ---- ESP32 encoders ----
 export const SERIAL_BAUD = 115200;

@@ -1,6 +1,6 @@
-// Loads the GLB once, centers it, and builds the invisible hit sphere the pinch aims at.
+// Loads the GLB once, centers it, and finds Alice (what the hand hitbox can hit and pick up).
 import { THREE, GLTFLoader } from "./libs.js";
-import { MODEL_URL, MODEL_SCALE, CHARACTER_NAME } from "./config.js";
+import { MODEL_URL, MODEL_SCALE, CHARACTER_NAME, PICKUP_LIFT } from "./config.js";
 
 export async function loadModel(parent) {
   const gltf = await new GLTFLoader().loadAsync(MODEL_URL);
@@ -20,19 +20,22 @@ export async function loadModel(parent) {
     for (const clip of gltf.animations) mixer.clipAction(clip).play();
   }
 
-  // A sphere around the character is much easier to pinch than its exact mesh.
-  // It's hidden, but raycasts still hit hidden objects.
-  const character = model.getObjectByName(CHARACTER_NAME) || model;
-  const charBounds = new THREE.Box3().setFromObject(character);
-  const size = charBounds.getSize(new THREE.Vector3());
-  const hitSphere = new THREE.Mesh(
-    new THREE.SphereGeometry(Math.max(size.x, size.y, size.z, 1.5) * 0.85, 16, 16),
-    new THREE.MeshBasicMaterial({ color: 0xff00ff, wireframe: true })
-  );
-  hitSphere.name = "character_hitbox";
-  hitSphere.visible = false; // set true to see it while debugging
-  hitSphere.position.copy(parent.worldToLocal(charBounds.getCenter(new THREE.Vector3())));
-  parent.add(hitSphere);
+  // Alice: her bounds (inside `parent`, so they follow its spin/tilt) are what the hand hitbox is tested against
+  const character = findCharacter(model);
+  const characterBox = new THREE.Box3().setFromObject(character).applyMatrix4(parent.matrixWorld.clone().invert());
+  const height = characterBox.getSize(new THREE.Vector3()).y;
+  const liftAmount = (height * PICKUP_LIFT) / character.parent.getWorldScale(new THREE.Vector3()).y; // in her own units
 
-  return { model, character, hitSphere, mixer, radius };
+  return { model, mixer, radius, character, characterBox, liftAmount };
+}
+
+// First node whose name starts with CHARACTER_NAME (the loader strips "." from names: "alice_anime.glb" -> "alice_animeglb")
+function findCharacter(model) {
+  const prefix = CHARACTER_NAME.toLowerCase();
+  let found = null;
+  model.traverse((o) => {
+    if (!found && o.name.toLowerCase().startsWith(prefix)) found = o;
+  });
+  if (!found) console.warn(`No "${CHARACTER_NAME}" node in the model, so the whole model counts as Alice`);
+  return found || model;
 }
