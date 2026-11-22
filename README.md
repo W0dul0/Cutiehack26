@@ -1,20 +1,20 @@
-# 🎭 CutieHack26: Alice in Wonderland Hologram
+# CutieHack26: Alice in Wonderland Hologram
 
-> ✨ An interactive 3D hologram experience featuring Alice in Wonderland!
-
----
-
-## 🌟 Features
-
-- **🎪 360° Holographic Display** - Shows a stunning 3D Alice in Wonderland scene from all angles inside a four-sided pyramid
-- **👋 Hand Gesture Control** - Use your webcam to track hand movements and pinch gestures  
-- **🖐️ Pick Up Characters** - Simply pinch the character with your fingers to "grab" it
-- **🔄 ESP32 Rotator System** - Three rotary encoders enable precise rotation, tilt, and zoom
-- **⌨️ Easy Testing** - Built-in keyboard controls for quick testing
+> An interactive 3D hologram experience featuring Alice in Wonderland!
 
 ---
 
-## 🛠️ Built With
+## Features
+
+- **360° Holographic Display** - Shows a stunning 3D Alice in Wonderland scene from all angles inside a four-sided pyramid
+- **Hand Gesture Control** - Use your webcam to track hand movements and pinch gestures  
+- **Pick Up Characters** - Simply pinch the character with your fingers to "grab" it
+- **ESP32 Rotator System** - Three rotary encoders enable precise rotation, tilt, and zoom
+- **⌨Easy Testing** - Built-in keyboard controls for quick testing
+
+---
+
+## Built With
 
 | Technology | Purpose |
 |------------|---------|
@@ -25,7 +25,7 @@
 
 ---
 
-## ▶️ Run the Project
+## ▶Run the Project
 
 
 1. Ensure you have **Node.js** and **pnpm** installed  
@@ -47,18 +47,18 @@
 
 ---
 
-## 🎮 Controls Reference
+## Controls Reference
 
-| 🕹️ Input | 🔄 Action |
+| Input | Action |
 |-----------|-----------|
-| ⬆️⬇️ Arrow Keys | Tilt (up/down) |
-| ⬅️➡️ Arrow Keys | Rotate (left/right) |
-| W / S | Zoom in / out |
-| ✊ Hand Pinch | **Pick up the character** |
+| Rotation (left/right) | Tilt (up/down) |
+| Rotation (left/right) | Rotate (left/right) |
+| Rotation (left/right) | Zoom in / out |
+| Rotation (left/right) | **Pick up the character** |
 
 ---
 
-## 🔌 Physical Controls
+## Physical Controls
 
 To use the rotary encoders:
 1. Upload `ESP_32_Rotator_Convert_V3/ESP32_convert_V3.ino` to your ESP32 board  
@@ -67,7 +67,7 @@ To use the rotary encoders:
 
 ---
 
-## 👥 Team
+## Team
 
 
 Add your team members here!
@@ -78,9 +78,10 @@ Sahng Chu
 
 ---
 
-Made for **[CutieHack 2026](https://cutiehack.com)** ❤️
+Made for **[CutieHack 2026](https://cutiehack.com)**
 
 [![GitHub](https://img.shields.io/github/stars/W0dul0/Cutiehack26)](https://github.com/W0dul0/Cutiehack26)
+[![Website](https://cutiehack26.vercel.app/)]
 
 ## Inspiration
 We were inspired by Disney's Pepper Ghost technique to project a 3d hologram into real life. We wanted to apply this amazing invention to this year's project with the theme of Alice in Wonderland.
