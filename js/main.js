@@ -1,6 +1,6 @@
-import * as THREE from "https://esm.sh/three@0.160.0";
-import { HandLandmarker, FilesetResolver } from "https://esm.sh/@mediapipe/tasks-vision@0.10.9";
-import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
+import * as THREE from "https://esm.sh";
+import { HandLandmarker, FilesetResolver } from "https://esm.sh";
+import { GLTFLoader } from "https://esm.sh/examples/jsm/loaders/GLTFLoader.js";
 
 const container = document.getElementById("Three.js");
 if (!container) {
@@ -14,9 +14,10 @@ scene.background = new THREE.Color(0x000000);
 const VIEW_RATIO = 0.33;
 const CENTER_GAP = 0;
 let orbitRadius = 20;
+let targetOrbitRadius = 20;
 const MIN_ZOOM = 10;
 const MAX_ZOOM = 32;
-const TURNTABLE_SPEED = 0; // Set > 0 for passive spin, 0 for encoder/keyboard control
+const TURNTABLE_SPEED = 0;
 
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
 camera.position.set(0, 0, orbitRadius);
@@ -38,9 +39,12 @@ const LIGHT_OFFSET = new THREE.Vector3(3, 5, 4);
 dirLight.position.copy(LIGHT_OFFSET);
 scene.add(dirLight);
 
-// Diorama container controlled by rotary encoders / keyboard
+// Diorama group transformed by the 3 rotary encoders
 const dioramaGroup = new THREE.Group();
 scene.add(dioramaGroup);
+
+let targetRotX = 0;
+let targetRotY = 0;
 
 let sceneMesh = null;
 let targetCharacter = null;
@@ -113,7 +117,6 @@ function renderViews() {
 // ==============================================================================
 
 // ===================== LAYER 1 FRONT HUD BORDER & 3D CURSOR ===================
-// 1. Front-facing tracking border (Layer 1 only -> appears ONLY on front glass)
 const borderMat = new THREE.MeshBasicMaterial({
   color: 0x00ffff,
   transparent: true,
@@ -130,7 +133,6 @@ frontBorderUI.layers.set(1);
 frontBorderUI.raycast = () => {};
 scene.add(frontBorderUI);
 
-// 2. 3D Floating Reticle Cursor (Visible across 3D scene for depth aiming)
 const cursorMat = new THREE.MeshBasicMaterial({
   color: 0x00ffff,
   transparent: true,
@@ -144,14 +146,12 @@ cursorMesh.renderOrder = 1000;
 cursorMesh.raycast = () => {};
 scene.add(cursorMesh);
 
-// 3. Invisible tracking plane at Z=0 for projecting 2D hand coordinates into 3D
 const trackingPlane = new THREE.Mesh(
   new THREE.PlaneGeometry(40, 40),
   new THREE.MeshBasicMaterial({ visible: false })
 );
 scene.add(trackingPlane);
 
-// 4. Grey pinch area indicator (Layer 1 only)
 const SHOW_HITBOX = true;
 const HITBOX_MAGNIFICATION = 0.5;
 const hitbox = new THREE.Mesh(
@@ -178,7 +178,7 @@ function getProjectionBounds() {
 }
 // ==============================================================================
 
-// ===================== LOAD GLB & GENEROUS CHARACTER HITBOX ===================
+// ===================== LOAD GLB & CHARACTER HITBOX ============================
 try {
   const gltfLoader = new GLTFLoader();
   const gltf = await gltfLoader.loadAsync("/assets/scene.glb");
@@ -188,16 +188,13 @@ try {
   sceneMesh.position.set(0, 0, 0);
   dioramaGroup.add(sceneMesh);
 
-  // Play Blockbench animations if present
   if (gltf.animations && gltf.animations.length > 0) {
     mixer = new THREE.AnimationMixer(sceneMesh);
     gltf.animations.forEach((clip) => mixer.clipAction(clip).play());
   }
 
-  // Find named character mesh (e.g., "character" or "target"), fallback to whole sceneMesh
   targetCharacter = sceneMesh.getObjectByName("character") || sceneMesh;
 
-  // Create generous invisible sphere hitbox around the target character
   const box = new THREE.Box3().setFromObject(targetCharacter);
   const center = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3());
@@ -217,78 +214,121 @@ try {
 }
 // ==============================================================================
 
-// ===================== HARDWARE INPUTS (Web Serial + Keyboard Fallback) =======
-function applyDialInput(axis, delta) {
-  if (axis === "X") dioramaGroup.rotation.y += delta * 0.06;
-  if (axis === "Y") dioramaGroup.rotation.x = THREE.MathUtils.clamp(dioramaGroup.rotation.x + delta * 0.06, -0.8, 0.8);
-  if (axis === "Z") {
-    orbitRadius = THREE.MathUtils.clamp(orbitRadius + delta * 0.4, MIN_ZOOM, MAX_ZOOM);
-    camera.position.z = orbitRadius;
+// ===================== SERIAL & ENCODER TRANSFORMS ============================
+const ROTATE_STEP = 0.12; // radians per encoder click
+const ZOOM_STEP = 0.8;    // camera units per encoder click
+
+function handleEncoderAction(encoderId, action, amount) {
+  switch (action) {
+    case "RIGHT":
+      targetRotY += amount * ROTATE_STEP;
+      break;
+    case "LEFT":
+      targetRotY -= amount * ROTATE_STEP;
+      break;
+    case "UP":
+      targetRotX = THREE.MathUtils.clamp(targetRotX - amount * ROTATE_STEP, -0.85, 0.85);
+      break;
+    case "DOWN":
+      targetRotX = THREE.MathUtils.clamp(targetRotX + amount * ROTATE_STEP, -0.85, 0.85);
+      break;
+    case "ZOOM_IN":
+      targetOrbitRadius = THREE.MathUtils.clamp(targetOrbitRadius - amount * ZOOM_STEP, MIN_ZOOM, MAX_ZOOM);
+      break;
+    case "ZOOM_OUT":
+      targetOrbitRadius = THREE.MathUtils.clamp(targetOrbitRadius + amount * ZOOM_STEP, MIN_ZOOM, MAX_ZOOM);
+      break;
   }
+
+  window.dispatchEvent(
+    new CustomEvent("encoderinput", { detail: { encoderId, action, amount } })
+  );
 }
 
-// Keyboard simulation fallback (Arrow keys = X/Y orbit, W/S = Zoom)
+// Keyboard fallback for testing without hardware
 window.addEventListener("keydown", (e) => {
-  if (e.key === "ArrowLeft")  applyDialInput("X", -1);
-  if (e.key === "ArrowRight") applyDialInput("X", 1);
-  if (e.key === "ArrowUp")    applyDialInput("Y", -1);
-  if (e.key === "ArrowDown")  applyDialInput("Y", 1);
-  if (e.key.toLowerCase() === "w") applyDialInput("Z", -1);
-  if (e.key.toLowerCase() === "s") applyDialInput("Z", 1);
+  if (e.key === "ArrowRight") handleEncoderAction("E1", "RIGHT", 1);
+  if (e.key === "ArrowLeft")  handleEncoderAction("E1", "LEFT", 1);
+  if (e.key === "ArrowUp")    handleEncoderAction("E2", "UP", 1);
+  if (e.key === "ArrowDown")  handleEncoderAction("E2", "DOWN", 1);
+  if (e.key.toLowerCase() === "w") handleEncoderAction("E3", "ZOOM_IN", 1);
+  if (e.key.toLowerCase() === "s") handleEncoderAction("E3", "ZOOM_OUT", 1);
 });
 
-// Web Serial API for ESP32 (expects lines like "X:1", "Y:-1", "Z:1")
+// Connect to ESP32 via Web Serial API (call from a button click)
 window.connectEncoders = async function () {
+  if (!("serial" in navigator)) {
+    alert("Web Serial API is not supported in this browser. Use Chrome or Edge.");
+    return;
+  }
+
   try {
     const port = await navigator.serial.requestPort();
     await port.open({ baudRate: 115200 });
+
+    // Prevent Chrome from holding ESP32 in reset/bootloader mode
+    await port.setSignals({ dataTerminalReady: false, requestToSend: false });
+
     const decoder = new TextDecoderStream();
     port.readable.pipeTo(decoder.writable);
     const reader = decoder.readable.getReader();
+
+    console.log("ESP32 Serial Connected");
+    window.dispatchEvent(new CustomEvent("serialconnected"));
 
     let buffer = "";
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
-      if (value) {
-        buffer += value;
-        const lines = buffer.split("\n");
-        buffer = lines.pop();
-        for (const line of lines) {
-          const clean = line.trim();
-          if (clean.includes(":")) {
-            const [axis, valStr] = clean.split(":");
-            const val = parseFloat(valStr);
-            if (!Number.isNaN(val)) applyDialInput(axis.toUpperCase(), val);
+      if (!value) continue;
+
+      buffer += value;
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop();
+
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line || line === "READY") continue;
+
+        // Expected format from encoders.ino: "E1,RIGHT,1"
+        const parts = line.split(",");
+        if (parts.length === 3) {
+          const encoderId = parts[0].trim();
+          const action = parts[1].trim().toUpperCase();
+          const amount = parseInt(parts[2].trim(), 10);
+          if (!Number.isNaN(amount)) {
+            handleEncoderAction(encoderId, action, amount);
           }
         }
       }
     }
   } catch (err) {
-    console.error("Serial connection error:", err);
-  }
+console.error("Serial connection error:", err);
+}
 };
 // ==============================================================================
-
 const clock = new THREE.Clock();
 function animate() {
-  requestAnimationFrame(animate);
-  const dt = clock.getDelta();
-  if (mixer) mixer.update(dt);
-  if (dioramaGroup && TURNTABLE_SPEED) dioramaGroup.rotation.y += TURNTABLE_SPEED * dt;
-  renderViews();
+requestAnimationFrame(animate);
+const dt = clock.getDelta();
+if (mixer) mixer.update(dt);
+if (TURNTABLE_SPEED) targetRotY += TURNTABLE_SPEED * dt;
+// Smoothly interpolate 3D diorama rotation & zoom from encoder targets
+dioramaGroup.rotation.y = THREE.MathUtils.lerp(dioramaGroup.rotation.y, targetRotY, 0.2);
+dioramaGroup.rotation.x = THREE.MathUtils.lerp(dioramaGroup.rotation.x, targetRotX, 0.2);
+orbitRadius = THREE.MathUtils.lerp(orbitRadius, targetOrbitRadius, 0.2);
+camera.position.z = orbitRadius;
+renderViews();
 }
 animate();
-
 // ===================== MEDIAPIPE & PINCH INTERACTION ==========================
 const vision = await FilesetResolver.forVisionTasks(
-  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/wasm"
+"jsdelivr.net"
 );
-
 const handLandmarker = await HandLandmarker.createFromOptions(vision, {
-  baseOptions: {
-    modelAssetPath:
-"https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+baseOptions: {
+modelAssetPath:
+"googleapis.com",
 delegate: "GPU",
 },
 runningMode: "VIDEO",
@@ -300,7 +340,7 @@ video.srcObject = await navigator.mediaDevices.getUserMedia({ video: true });
 await video.play();
 }
 const raycaster = new THREE.Raycaster();
-const WRIST_HEIGHT_CUTOFF = 0.78; // Ignore hands below this Y (turning knobs on table)
+const WRIST_HEIGHT_CUTOFF = 0.78;
 const SENSITIVITY_X = 2.2;
 const SENSITIVITY_Y = 2.0;
 const castFromPinch = (point) => {
@@ -308,9 +348,9 @@ if (!point) return null;
 camera.position.z = orbitRadius;
 camera.updateMatrixWorld();
 raycaster.setFromCamera(new THREE.Vector2(point.x, point.y), camera);
-// Check generous character hitbox first, then fallback to scene meshes
 const targets = characterHitbox ? [characterHitbox] : scene.children;
-const h = raycaster.intersectObjects(targets, true)[0];
+const hits = raycaster.intersectObjects(targets, true);
+const h = hits[0];
 return h ? { object: h.object, name: h.object.name, point: h.point, distance: h.distance } : null;
 };
 function handlePinchStart(point) {
@@ -320,7 +360,7 @@ cursorMesh.scale.set(1.35, 1.35, 1.35);
 if (hit && !isPickedUp) {
 isPickedUp = true;
 console.log("Character found!", hit.name);
-if (targetCharacter) targetCharacter.position.y += 1.5; // Lift character out of diorama
+if (targetCharacter) targetCharacter.position.y += 1.5;
 window.dispatchEvent(new CustomEvent("characterfound", { detail: { hit } }));
 }
 }
@@ -332,7 +372,6 @@ targetCharacter.position.y -= 1.5;
 isPickedUp = false;
 }
 }
-// Try external ./pinch.js first, otherwise use built-in Euclidean pinch detector
 let pinchDetector = null;
 try {
 const { createPinchDetector } = await import("./pinch.js");
@@ -367,7 +406,6 @@ const thumb = hand[4];
 const index = hand[8];
 const midX = (thumb.x + index.x) / 2;
 const midY = (thumb.y + index.y) / 2;
-// Mirror X for Pepper's Ghost glass reflection and apply chest-level amplification
 state.point = {
 x: THREE.MathUtils.clamp(((1 - midX) * 2 - 1) * SENSITIVITY_X, -1, 1),
 y: THREE.MathUtils.clamp((1 - midY * 2) * SENSITIVITY_Y, -1, 1),
@@ -397,16 +435,13 @@ if (video && video.readyState >= 2 && video.currentTime !== lastVideoTime) {
 lastVideoTime = video.currentTime;
 const result = handLandmarker.detectForVideo(video, performance.now());
 const rawHand = result.landmarks?.[0];
-// Airspace Height Filter: ignore hand if resting low near the physical dials
 const handInAirspace = rawHand && rawHand[0].y <= WRIST_HEIGHT_CUTOFF ? rawHand : null;
 const videoAspect = video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 1;
 pinchDetector.update(handInAirspace, videoAspect);
 const active = !!handInAirspace && !!pinchDetector.state.point;
-// Fade Layer 1 front border & 3D cursor smoothly
 borderMat.opacity = THREE.MathUtils.lerp(borderMat.opacity, active ? 0.85 : 0, 0.2);
 cursorMat.opacity = THREE.MathUtils.lerp(cursorMat.opacity, active ? 1.0 : 0, 0.25);
 if (active) {
-// Project amplified pointer onto Z=0 tracking plane for 3D reticle position
 camera.position.z = orbitRadius;
 camera.updateMatrixWorld();
 raycaster.setFromCamera(
@@ -418,7 +453,6 @@ if (planeHit) {
 cursorMesh.position.lerp(planeHit.point, 0.25);
 }
 }
-// Update grey pinch area preview
 hitbox.visible = SHOW_HITBOX && active;
 if (hitbox.visible) {
 const { halfW, halfH } = getProjectionBounds();
