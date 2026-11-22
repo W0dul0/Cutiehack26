@@ -13,7 +13,8 @@ scene.background = new THREE.Color(0x000000); // pure black = invisible on the p
 // ===================== PEPPER'S GHOST (4 scissored views) =====================
 const VIEW_RATIO = 0.33;     // each view's side as a fraction of the square canvas
 const CENTER_GAP = 0;        // px each view is pushed outward from the center
-const ORBIT_RADIUS = 20;     // camera distance from the model
+let ORBIT_RADIUS = 20;       // camera distance from the model (recomputed from the model's size once it loads)
+const CAMERA_DISTANCE = 1.0; // 1 = closest the camera can get with no clipping while the model spins; lower = closer (may clip)
 const TURNTABLE_SPEED = 0.4; // radians/sec the model spins on its own (0 = off)
 
 // `camera` is the FRONT view camera. The pinch raycast and the hitbox use it, so
@@ -107,6 +108,10 @@ function renderViews() {
 }
 // ==============================================================================
 
+// The turntable spins this pivot; the model sits inside it, centered on the origin
+const modelPivot = new THREE.Group();
+scene.add(modelPivot);
+
 try {
   const gltfLoader = new GLTFLoader();
   const gltf = await gltfLoader.loadAsync("/assets/scene.glb");
@@ -115,7 +120,19 @@ try {
   sceneMesh.scale.set(0.1, 0.1, 0.1);
   sceneMesh.position.set(0, 0, 0);
 
-  scene.add(sceneMesh);
+  // Center the model on the origin so it spins in place instead of swinging out of the views
+  const sphere = new THREE.Box3().setFromObject(sceneMesh).getBoundingSphere(new THREE.Sphere());
+  sceneMesh.position.sub(sphere.center);
+  modelPivot.add(sceneMesh);
+
+  // Move the cameras as close as possible while the whole spinning model still fits each view
+  ORBIT_RADIUS = sphere.radius / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2)) * CAMERA_DISTANCE;
+  camera.position.set(0, 0, ORBIT_RADIUS);
+  for (const cam of [camera, viewCamera]) {
+    cam.near = ORBIT_RADIUS / 100;
+    cam.far = ORBIT_RADIUS + sphere.radius * 2;
+    cam.updateProjectionMatrix();
+  }
   console.log("Loaded GLB:", sceneMesh);
 } catch (err) {
   console.error("Failed to load GLTF model:", err);
@@ -125,7 +142,7 @@ const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
-  if (sceneMesh && TURNTABLE_SPEED) sceneMesh.rotation.y += TURNTABLE_SPEED * dt;
+  if (sceneMesh && TURNTABLE_SPEED) modelPivot.rotation.y += TURNTABLE_SPEED * dt;
   renderViews();
 }
 animate();
