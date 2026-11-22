@@ -2,7 +2,7 @@
 import { THREE, GLTFLoader } from "./libs.js";
 import {
   MAP_URL, ALICE_URL, REMOVE_MAP_ALICE, PICKUP_LIFT, ALICE_BUBBLE_SCALE,
-  ALICE_CLEARANCE, ALICE_FLOOR_TOLERANCE, ALICE_PLACE_ATTEMPTS, ALICE_MOVE_MIN_DISTANCE,
+  ALICE_CLEARANCE, ALICE_FLATNESS, ALICE_MAX_GROUND_RISE, ALICE_PLACE_ATTEMPTS, ALICE_MOVE_MIN_DISTANCE,
   HAND_GLB_URL, HAND_MODEL_ROTATION,
 } from "./config.js";
 
@@ -63,11 +63,21 @@ export async function loadWorld(parent) {
   world.position.copy(mapSphere.center).negate();
   parent.add(world);
 
+  // The map and Alice's own parts never move relative to their parents: bake their matrices once instead of
+  // recomputing them every frame. Only `world` and Alice's pivot (`alice`) still update, since those do move.
+  for (const still of [map, aliceGltf.scene]) {
+    still.traverse((o) => {
+      o.updateMatrix();
+      o.matrixAutoUpdate = false;
+    });
+  }
+
   // Alice's hitbox bubble, in parent space. Kept up to date in place, so everyone holding it sees moves.
   const characterSphere = new THREE.Sphere(new THREE.Vector3(), (Math.max(aliceSize.x, aliceSize.y, aliceSize.z) / 2) * ALICE_BUBBLE_SCALE);
   const centerOffset = new THREE.Vector3(0, aliceSize.y / 2, 0); // her pivot is at her feet
   const updateSphere = () => characterSphere.center.copy(alice.position).add(centerOffset).add(world.position);
   updateSphere();
+  const lastSpot = new THREE.Vector3();
 
   return {
     radius: mapSphere.radius,
@@ -78,7 +88,7 @@ export async function loadWorld(parent) {
     // Hide Alice somewhere new, away from where she is now. characterSphere follows.
     moveAlice() {
       parent.updateWorldMatrix(true, true);
-      hide({ awayFrom: alice.position.clone() });
+      hide({ awayFrom: lastSpot.copy(alice.position) });
       updateSphere();
     },
   };
@@ -93,9 +103,11 @@ function removeBuiltInAlice(map) {
   found.forEach((o) => o.removeFromParent());
 }
 
-// Returns hide({ awayFrom }): tries random spots until one has flat, empty floor under Alice's whole footprint.
-// Rays are dropped straight down from above the map: if any lands higher than the floor (a rock, the house,
-// a mushroom...) or misses the map entirely (off the edge), that spot is rejected.
+// Returns hide({ awayFrom }): tries random spots + facings until the ground under Alice's whole footprint is clear.
+// Rays are dropped straight down from above the map over a grid covering her footprint (turned the way she'll
+// face). If any ray lands on something sticking up (a rock, the house, a mushroom...), on a slope that's too
+// steep, or misses the map (off the edge), that spot is rejected. Using her real rectangle (not a circle around
+// her) lets her fit the narrow side gardens beside and behind the house.
 // With awayFrom, the new spot must also be ALICE_MOVE_MIN_DISTANCE footprints away (or as far as the map allows).
 // Works in `world`'s own coordinates, so it still works after the map has been spun/tilted.
 function createHider(world, map, alice, aliceSize, floorY) {
@@ -103,49 +115,63 @@ function createHider(world, map, alice, aliceSize, floorY) {
   map.traverse((o) => { if (o.isMesh) meshes.push(o); });
   world.updateMatrixWorld(true);
   const mapBox = new THREE.Box3().setFromObject(map); // world is at the origin right now, so this is in world-local coords
+
+  const halfW = (aliceSize.x / 2) * ALICE_CLEARANCE; // her footprint rectangle, before turning
+  const halfD = (aliceSize.z / 2) * ALICE_CLEARANCE;
+  const flatness = aliceSize.y * ALICE_FLATNESS;                      // max height difference under her
+  const lowestGround = floorY - flatness;                             // ground can't be lower than the floor...
+  const highestGround = floorY + aliceSize.y * ALICE_MAX_GROUND_RISE; // ...or much higher (grass yes, rooftops no)
+  const minDistance = Math.hypot(halfW, halfD) * 2 * ALICE_MOVE_MIN_DISTANCE;
+
+  // Footprint grid: center first (cheapest early reject), then a 4x4 grid over her rectangle
+  const grid = [[0, 0]];
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) grid.push([(-1 + (2 * i) / 3) * halfW, (-1 + (2 * j) / 3) * halfD]);
+
   const ray = new THREE.Raycaster();
   const from = new THREE.Vector3();
   const down = new THREE.Vector3();
-  const footRadius = (Math.hypot(aliceSize.x, aliceSize.z) / 2) * ALICE_CLEARANCE; // covers her at any rotation
-  const tolerance = aliceSize.y * ALICE_FLOOR_TOLERANCE;
+  const toLocal = new THREE.Matrix4();
+  const hitLocal = new THREE.Vector3();
+  // Rays start just above her head at the highest ground she may stand on: roofs and branches overhead
+  // don't block her, but anything she'd actually bump into is still in the rays' way.
+  const top = highestGround + aliceSize.y * 1.05;
 
   // Height (world-local) of the first thing a ray dropped at (x, z) hits, or null if it misses the map
   const surfaceAt = (x, z) => {
-    from.set(x, mapBox.max.y + 1, z).applyMatrix4(world.matrixWorld);
-    down.set(0, -1, 0).transformDirection(world.matrixWorld);
-    ray.set(from, down);
+    ray.set(from.set(x, top, z).applyMatrix4(world.matrixWorld), down);
     const hit = ray.intersectObjects(meshes, false)[0];
-    return hit ? world.worldToLocal(hit.point).y : null;
+    return hit ? hitLocal.copy(hit.point).applyMatrix4(toLocal).y : null;
   };
 
-  // Footprint samples: center, an inner ring and an outer ring
-  const offsets = [[0, 0]];
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2;
-    offsets.push([Math.cos(a) * footRadius, Math.sin(a) * footRadius]);
-    offsets.push([Math.cos(a + 0.4) * footRadius * 0.5, Math.sin(a + 0.4) * footRadius * 0.5]);
-  }
-
   const rand = (lo, hi) => lo + Math.random() * (hi - lo);
-  const minDistance = footRadius * 2 * ALICE_MOVE_MIN_DISTANCE;
 
   return function hide({ awayFrom = null } = {}) {
-    let best = null; // farthest clear spot so far: { x, y, z, distance }
-    for (let attempt = 1; attempt <= ALICE_PLACE_ATTEMPTS; attempt++) {
-      const x = rand(mapBox.min.x + footRadius, mapBox.max.x - footRadius);
-      const z = rand(mapBox.min.z + footRadius, mapBox.max.z - footRadius);
+    // The map's current spin/tilt, worked out once per hide instead of once per ray
+    world.updateWorldMatrix(true, false);
+    toLocal.copy(world.matrixWorld).invert();
+    down.set(0, -1, 0).transformDirection(world.matrixWorld);
 
-      let highest = -Infinity;
-      const clear = offsets.every(([dx, dz]) => {
-        const y = surfaceAt(x + dx, z + dz);
-        if (y === null || Math.abs(y - floorY) > tolerance) return false;
-        highest = Math.max(highest, y);
-        return true;
+    let best = null; // farthest clear spot so far: { x, y, z, yaw, distance }
+    for (let attempt = 1; attempt <= ALICE_PLACE_ATTEMPTS; attempt++) {
+      const x = rand(mapBox.min.x, mapBox.max.x); // off-map rays miss, so no margin needed
+      const z = rand(mapBox.min.z, mapBox.max.z);
+      const yaw = Math.random() * Math.PI * 2;
+      const cos = Math.cos(yaw), sin = Math.sin(yaw);
+
+      // Clear = every ray hits ground-height surface, all within `flatness` of each other
+      let lowest = Infinity, highest = -Infinity, centerY = 0;
+      const clear = grid.every(([u, v], k) => {
+        const y = surfaceAt(x + u * cos + v * sin, z - u * sin + v * cos); // same turn as alice.rotation.y = yaw
+        if (y === null || y < lowestGround || y > highestGround) return false;
+        if (k === 0) centerY = y;
+        if (y < lowest) lowest = y;
+        if (y > highest) highest = y;
+        return highest - lowest <= flatness;
       });
       if (!clear) continue;
 
       const distance = awayFrom ? Math.hypot(x - awayFrom.x, z - awayFrom.z) : Infinity;
-      if (!best || distance > best.distance) best = { x, y: highest, z, distance };
+      if (!best || distance > best.distance) best = { x, y: centerY, z, yaw, distance };
       if (distance >= minDistance) break; // far enough, done
     }
 
@@ -153,8 +179,9 @@ function createHider(world, map, alice, aliceSize, floorY) {
       console.warn("No clear spot found for Alice; she stays where she is");
       return;
     }
-    alice.position.set(best.x, best.y, best.z); // feet exactly on the floor
-    alice.rotation.y = Math.random() * Math.PI * 2;
+    // Feet planted at the middle of her footprint, so on a slope she doesn't float over the low side
+    alice.position.set(best.x, best.y, best.z);
+    alice.rotation.y = best.yaw;
     console.log(`Alice hidden at (${best.x.toFixed(2)}, ${best.z.toFixed(2)})`);
   };
 }

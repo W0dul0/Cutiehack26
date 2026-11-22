@@ -62,4 +62,17 @@ export function initDebugPanel({ hitboxesShown, onToggleHitboxes, onMoveAlice })
   // "Alice was touched" card: true (green) for 2 seconds after each touch
   const touchedStatus = document.getElementById("alice-touched-status");
   window.addEventListener("alicetouched", (e) => showFlag(touchedStatus, e.detail.aliceWasTouched));
+
+  // "Touch cooldown" line: counts down in red, then green "ready"
+  const cooldownStatus = document.getElementById("cooldown-status");
+  let cooldownText = "";
+  return {
+    setCooldown(secondsLeft) {
+      const text = secondsLeft > 0 ? `${secondsLeft.toFixed(1)}s` : "ready";
+      if (!cooldownStatus || text === cooldownText) return; // only touch the page when the text changes
+      cooldownText = text;
+      cooldownStatus.textContent = text;
+      cooldownStatus.classList.toggle("hit", secondsLeft <= 0);
+    },
+  };
 }

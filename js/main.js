@@ -14,7 +14,7 @@
 //   ui.js            debug panel buttons and cards
 //   hitGif.js        confetti GIF over all 4 views after the hand touches Alice
 import { THREE } from "./libs.js";
-import { FOV, MODEL_FILL, ALICE_TOUCHED_SECONDS } from "./config.js";
+import { FOV, MODEL_FILL, ALICE_TOUCHED_SECONDS, ALICE_TOUCH_COOLDOWN } from "./config.js";
 import { scene, keyLight, modelRoot } from "./stage.js";
 import { createHologram, frontCamera, setCameraDistance } from "./hologramViews.js";
 import { loadWorld, loadHandModel } from "./model.js";
@@ -38,7 +38,10 @@ const emit = (name, detail) => window.dispatchEvent(new CustomEvent(name, { deta
 
 // isHittingAlice:  true while the grey hand hitbox overlaps Alice's red bubble
 // aliceWasTouched: true for ALICE_TOUCHED_SECONDS after a touch (confetti plays, Alice has already moved)
-const hitState = { isHittingAlice: false, aliceWasTouched: false };
+// isOnCooldown:    true for ALICE_TOUCH_COOLDOWN after a touch; touching her doesn't count meanwhile
+const hitState = { isHittingAlice: false, aliceWasTouched: false, isOnCooldown: false };
+let cooldownEnds = 0; // performance.now() time the touch cooldown is over
+let touchedTimer = 0; // turns aliceWasTouched back off
 let world = null; // loadWorld() result, once the models are in
 
 // Hide Alice somewhere new (the "Move Alice" button, and automatically after she's touched)
@@ -50,11 +53,13 @@ function moveAlice() {
 }
 
 function onAliceTouched() {
+  cooldownEnds = performance.now() + ALICE_TOUCH_COOLDOWN * 1000;
   hitState.aliceWasTouched = true;
   hitGif.setShown(true);
   emit("alicetouched", { aliceWasTouched: true });
   moveAlice();
-  setTimeout(() => {
+  clearTimeout(touchedTimer); // a new touch restarts the 2 seconds (only possible if the cooldown is shorter)
+  touchedTimer = setTimeout(() => {
     hitState.aliceWasTouched = false;
     hitGif.setShown(false);
     emit("alicetouched", { aliceWasTouched: false });
@@ -79,7 +84,7 @@ window.moveAlice = moveAlice;
 window.connectEncoders = () => connectEncoders(applyControl);
 
 bindKeyboard();
-initDebugPanel({
+const panel = initDebugPanel({
   hitboxesShown: overlay.hitboxesShown,
   onToggleHitboxes: (shown) => overlay.setHitboxesShown(shown),
   onMoveAlice: moveAlice,
@@ -104,15 +109,23 @@ hologram.renderer.setAnimationLoop(() => {
   modelRoot.rotation.set(view.tilt, view.spin, 0);
   setCameraDistance(view.distance);
 
+  // Touch cooldown: counts down after each touch; touching her doesn't count until it's over
+  const cooldownLeft = Math.max(0, (cooldownEnds - performance.now()) / 1000);
+  const onCooldown = cooldownLeft > 0;
+  if (onCooldown !== hitState.isOnCooldown) {
+    hitState.isOnCooldown = onCooldown;
+    emit("alicecooldown", { isOnCooldown: onCooldown });
+  }
+  panel.setCooldown(cooldownLeft);
+
   const hitting = pickup.touches(square);
   if (hitting !== hitState.isHittingAlice) {
     hitState.isHittingAlice = hitting;
     emit("alicehit", { isHittingAlice: hitting });
-    // A new touch counts once; touches during the 2-second celebration are ignored
-    if (hitting && !hitState.aliceWasTouched) onAliceTouched();
   }
+  if (hitting && !onCooldown) onAliceTouched(); // she moves away at once, so this fires once per find
 
-  overlay.update(dt, square, hitting);
+  overlay.update(dt, square, hitting, onCooldown);
   hologram.render(overlay.hudScene);
 });
 

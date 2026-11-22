@@ -73,6 +73,7 @@ export function createHandOverlay() {
   let bubbleSphere = null; // Alice's hitbox sphere; the bubble follows it when she moves
   let glow = 0;  // 0 = idle, 1 = fully shining (eases between them)
   let time = 0;
+  let dim = 1;    // 1 = normal, lower while the touch cooldown runs
   let showHitboxes = SHOW_HITBOXES;
   border.visible = showHitboxes;
 
@@ -115,14 +116,15 @@ export function createHandOverlay() {
     },
 
     // Call every frame. square = handSquare(...) or null when no hand.
-    update(dt, square, isHittingAlice) {
-      // Red bubble: follows Alice, shines + pulses while hit, calm when not
+    update(dt, square, isHittingAlice, isOnCooldown = false) {
+      // Red bubble: follows Alice, shines + pulses while hit, calm when not, dimmed during the touch cooldown
       if (bubble) bubble.position.copy(bubbleSphere.center);
       time += dt;
-      glow = THREE.MathUtils.damp(glow, isHittingAlice ? 1 : 0, 12, dt);
+      glow = THREE.MathUtils.damp(glow, isHittingAlice && !isOnCooldown ? 1 : 0, 12, dt);
+      dim = THREE.MathUtils.damp(dim, isOnCooldown ? 0.3 : 1, 8, dt);
       const pulse = 0.75 + 0.25 * Math.sin(time * 8);
-      bubbleFillMat.opacity = 0.15 + 0.45 * glow * pulse;
-      bubbleWireMat.opacity = 0.4 + 0.6 * glow;
+      bubbleFillMat.opacity = (0.15 + 0.45 * glow * pulse) * dim;
+      bubbleWireMat.opacity = (0.4 + 0.6 * glow) * dim;
       bubbleGlowMat.opacity = 0.7 * glow * pulse;
 
       borderMat.opacity = THREE.MathUtils.damp(

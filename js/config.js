@@ -9,15 +9,19 @@ export const REMOVE_MAP_ALICE = "alicia";  // the map has its own built-in Alice
 export const PICKUP_LIFT = 0.3;            // how far Alice rises while held, as a fraction of her height
 
 // ---- Random hiding spot (new spot every page load) ----
-// Alice is put somewhere on the map with her feet on the floor and nothing else inside her footprint.
-// "The floor" = the height her feet are at in scene (2).glb.
-export const ALICE_CLEARANCE = 1.15;       // footprint checked around her, vs. her own width (higher = more space around her)
-export const ALICE_FLOOR_TOLERANCE = 0.08; // how uneven the floor under her may be, as a fraction of her height
-export const ALICE_PLACE_ATTEMPTS = 1000;
+// Alice is put somewhere on the map standing on the ground, with nothing else inside her footprint.
+// "The floor" = the height her feet are at in scene (2).glb. Grass a little higher than that counts as ground too.
+export const ALICE_CLEARANCE = 1.0;        // footprint checked under her, vs. her own size (higher = more space around her)
+export const ALICE_FLATNESS = 0.2;         // how sloped/uneven the ground under her may be, as a fraction of her height
+                                           // (the side gardens are grassy mounds, so this needs to allow gentle slopes)
+export const ALICE_MAX_GROUND_RISE = 0.35; // how much higher than the floor she may stand (grass/hills), as a fraction of her height
+                                           // (higher = more places, but she may end up on top of low objects)
+export const ALICE_PLACE_ATTEMPTS = 1500;  // random spots tried before giving up and keeping her where she is
 export const ALICE_MOVE_MIN_DISTANCE = 1;  // when she moves, how far from her old spot (in her own footprint widths)
 
 // ---- Finding Alice ----
-export const ALICE_TOUCHED_SECONDS = 2;    // aliceWasTouched stays true (and confetti plays) this long after a touch  // random spots tried before giving up and keeping her original spot
+export const ALICE_TOUCHED_SECONDS = 2;    // aliceWasTouched stays true (and confetti plays) this long after a touch
+export const ALICE_TOUCH_COOLDOWN = 3;     // seconds after a touch before touching her counts again (bubble dims meanwhile)
 
 // ---- Hologram layout (4 views, one per pyramid face) ----
 export const VIEW_SIZE = 0.33;   // each view's side as a fraction of the square canvas
